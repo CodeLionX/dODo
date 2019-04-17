@@ -5,8 +5,33 @@
 ## Organizational
 
 - We use Scala, Akka
-- Paper will be hosted on Github (link to repo follows) in Latex
+- Paper will be hosted on [Github](https://github.com/CodeLionX/dODo-paper) in Latex
 - Meetings organized in shared calendar
+
+## Mini Expose
+- can be in bullet points
+- to be presented on the 30th of April
+
+### Structure:
+
+- Motivation
+    - What is the project about?
+    - Why is the topic important?
+    - What are the challenges?
+- Related Work
+    - Focus on one paper
+- Approach
+    - How do we plan so solve our problem?
+    - How can we use distribution to improve former solutions?
+- Evaluation
+    - Which datasets will we use?
+    - What benchmarks will we focus on?
+    - Consider the specific challenges of distributed systems
+        - Utilize all available resources
+        - Deal with failing nodes
+        - Support Elasticity
+        - ...
+- References
 
 ## Next Tasks
 
