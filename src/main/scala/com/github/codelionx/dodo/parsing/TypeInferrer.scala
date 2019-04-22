@@ -1,66 +1,59 @@
 package com.github.codelionx.dodo.parsing
 
-import java.time.format.DateTimeFormatter
-import java.time.{LocalDate, LocalDateTime, ZonedDateTime}
-
-import scala.util.{Failure, Success, Try}
+import com.github.codelionx.dodo.types._
 
 
 object TypeInferrer {
 
-  // supported data types
-  private val types: Seq[DataType] = Seq(DoubleType, LongType, DoubleType, StringType)
-
-  // supported date types
-  private val datetimeFormats = Seq(DateTimeFormatter.ISO_ZONED_DATE_TIME, DateTimeFormatter.ISO_OFFSET_DATE_TIME, DateTimeFormatter.ISO_DATE_TIME, DateTimeFormatter.RFC_1123_DATE_TIME)
-  private val dateFormats = Seq(DateTimeFormatter.ISO_OFFSET_DATE, DateTimeFormatter.BASIC_ISO_DATE, DateTimeFormatter.ISO_DATE, DateTimeFormatter.ISO_LOCAL_DATE)
-
   def inferType(value: String): DataType = {
-    if (isLong(value))
-      LongType
-    else if (isDouble(value))
-      DoubleType
-    else if (isDate(value))
-      DateType
-    else
-      StringType
+    if (NullType.isNull(value))
+      return NullType
+
+    val dateChecker = DateType.isDateChecker(value)
+    if (dateChecker.isDate) {
+      dateChecker.dateType
+
+    } else {
+      if (LongType.isLong(value))
+        LongType
+
+      else if (DoubleType.isDouble(value))
+        DoubleType
+
+      else
+        StringType
+
+    }
   }
 
-  def isDouble(value: String): Boolean = Try {
-    value.toDouble
-  } match {
-    case Success(_) => true
-    case Failure(_) => false
-  }
+}
 
-  def isLong(value: String): Boolean = Try {
-    value.toLong
-  } match {
-    case Success(_) => true
-    case Failure(_) => false
-  }
+trait TypeInferrer {
 
-  def isDate(value: String): Boolean = {
-    for (format <- datetimeFormats) {
-      Try {
-        ZonedDateTime.parse(value, format)
-      } recoverWith {
-        case _: Throwable => Try {
-          LocalDateTime.parse(value, format)
-        }
-      } match {
-        case Success(_) => return true
-        case Failure(_) =>
+  def refreshTypesFromRow(row: Array[String]): Unit
+
+  def columnTypes: Seq[DataType]
+
+}
+
+class IterativeTypeInferrer(numberOfColumns: Int) extends TypeInferrer {
+
+  private val types: Array[DataType] = Array.apply( (0 until numberOfColumns).map(_ => NullType): _* )
+
+  /**
+    * Columns in a row must arrive in the same order every time!
+    *
+    * @param row
+    */
+  override def refreshTypesFromRow(row: Array[String]): Unit = {
+    val newTypes = row.map(TypeInferrer.inferType)
+
+    for(i <- row.indices) {
+      if(types(i) != StringType && types(i) < newTypes(i)) {
+        types(i) = newTypes(i)
       }
     }
-    for (format <- dateFormats) {
-      Try {
-        LocalDate.parse(value, format)
-      } match {
-        case Success(_) => return true
-        case Failure(_) =>
-      }
-    }
-    false
   }
+
+  override def columnTypes: Seq[DataType] = types
 }
