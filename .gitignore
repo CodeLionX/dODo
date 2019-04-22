@@ -100,3 +100,12 @@ atlassian-ide-plugin.xml
 
 # Editor-based Rest Client
 .idea/httpRequests
+
+#####################
+# Custom
+
+# data folder
+data
+
+# intellij (openjdk) pid files
+.attach_pid*
