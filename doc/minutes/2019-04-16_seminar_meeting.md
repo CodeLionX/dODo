@@ -1,7 +1,5 @@
 # Meeting 2019-04-16
 
-## Topic-1
-
 ## Organizational
 
 - We use Scala, Akka
