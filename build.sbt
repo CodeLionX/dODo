@@ -2,7 +2,7 @@ name := "dodo"
 
 version := "0.0.1"
 
-scalaVersion := "2.12.6"
+scalaVersion := "2.12.8"
 
 lazy val akkaVersion = "2.5.22"
 
