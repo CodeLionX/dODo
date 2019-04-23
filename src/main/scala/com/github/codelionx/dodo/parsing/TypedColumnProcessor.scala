@@ -4,19 +4,20 @@ import com.github.codelionx.dodo.types.TypedColumnBuilder
 import com.univocity.parsers.common.ParsingContext
 import com.univocity.parsers.common.processor.RowProcessor
 
+
 class TypedColumnProcessor(numberOfTypeInferingRows: Int = 20) extends RowProcessor {
 
-  object State extends Enumeration {
+  private object State extends Enumeration {
     type State = Value
     val TypeInferring, EmptyingBuffer, Parsing = Value
   }
 
-  var state: State.State = State.TypeInferring
-  var columns: Array[TypedColumnBuilder[_ <: Any]] = _
-  val untypedRowBuffer: Array[Array[String]] = Array.ofDim(numberOfTypeInferingRows)
-  var inferrer: TypeInferrer = _
-  var columnsIndex: Int = 0
-  var untypedRowBufferIndex: Int = 0
+  private var state: State.State = State.TypeInferring
+  private var columns: Array[TypedColumnBuilder[_ <: Any]] = _
+  private val untypedRowBuffer: Array[Array[String]] = Array.ofDim(numberOfTypeInferingRows)
+  private var inferrer: TypeInferrer = _
+  private var columnsIndex: Int = 0
+  private var untypedRowBufferIndex: Int = 0
 
   override def processStarted(context: ParsingContext): Unit = {}
 
@@ -66,13 +67,15 @@ class TypedColumnProcessor(numberOfTypeInferingRows: Int = 20) extends RowProces
   }
 
   override def processEnded(context: ParsingContext): Unit = {
-    println(inferrer.columnTypes.mkString(" - "))
-    println("Buffered and reparsed columns:")
-    println(s"Current row index: $columnsIndex")
-    println("  " +
-      columns.zip(inferrer.columnTypes).map {
-        case (xs, t) => t.toString + ": " + xs.toArray.mkString(", ")
-      }.mkString("\n  ")
-    )
+    println("Column Types:")
+    println(s"  ${inferrer.columnTypes.mkString(" ")}")
+    println("Parsed columns:")
+    println(s"  Number of rows: ${columnsIndex+1}")
+//    println("  " +
+//      columns.zip(inferrer.columnTypes).map {
+//        case (xs, t) => t.toString + ": " + xs.toArray.mkString(", ")
+//      }.mkString("\n  ")
+//    )
+    println("First row: " + columns.map(_.toArray(0)).mkString(", "))
   }
 }

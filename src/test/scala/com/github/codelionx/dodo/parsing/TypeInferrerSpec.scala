@@ -5,6 +5,7 @@ import java.time.format.DateTimeFormatter
 import com.github.codelionx.dodo.types._
 import org.scalatest.{Matchers, WordSpec}
 
+
 class TypeInferrerSpec extends WordSpec with Matchers {
 
   "A TypeInferrer" should {
