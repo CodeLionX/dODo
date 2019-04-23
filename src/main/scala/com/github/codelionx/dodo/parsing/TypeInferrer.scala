@@ -49,7 +49,7 @@ class IterativeTypeInferrer(numberOfColumns: Int) extends TypeInferrer {
     val newTypes = row.map(TypeInferrer.inferType)
 
     for(i <- row.indices) {
-      if(types(i) != StringType && types(i) < newTypes(i)) {
+      if(types(i) != newTypes(i) && types(i) < newTypes(i)) {
         types(i) = newTypes(i).asInstanceOf[DataType[Any]]
       }
     }
