@@ -1,7 +1,6 @@
 package com.github.codelionx.dodo.parsing
 
-import com.github.codelionx.dodo.types.DataType
-import com.github.codelionx.dodo.types.typedColumns.TypedColumnBuilder
+import com.github.codelionx.dodo.types.TypedColumnBuilder
 import com.univocity.parsers.common.ParsingContext
 import com.univocity.parsers.common.processor.RowProcessor
 
@@ -33,7 +32,7 @@ class TypedColumnProcessor(numberOfTypeInferingRows: Int = 20) extends RowProces
         untypedRowBuffer(untypedRowBufferIndex) = row
         untypedRowBufferIndex += 1
 
-        if(untypedRowBufferIndex >= numberOfTypeInferingRows)
+        if (untypedRowBufferIndex >= numberOfTypeInferingRows)
           state = State.EmptyingBuffer
 
       case State.EmptyingBuffer =>
@@ -42,21 +41,14 @@ class TypedColumnProcessor(numberOfTypeInferingRows: Int = 20) extends RowProces
           val types = inferrer.columnTypes
 
           // initialize column arrays
-          columns =  Array.ofDim(types.length)
-          types.indices.foreach(i => {
-            val dataType = types(i)
-            val String_ = classOf[String]
-            val Double_ = classOf[Double]
-            dataType.tpe.runtimeClass match {
-              case String_ => columns(i) = new TypedColumnBuilder[String](dataType.asInstanceOf[DataType[String]])
-              case Double_ => columns(i) = new TypedColumnBuilder[Double](dataType.asInstanceOf[DataType[Double]])
-              case _ => throw new RuntimeException(s"DataType $dataType is not supported!")
-            }
-          })
+          columns = Array.ofDim(types.length)
+          types.indices.foreach(i =>
+            columns(i) = types(i).createTypedColumnBuilder
+          )
 
           // fill column arrays with buffered data
-          untypedRowBuffer.foreach( bufferedRow => {
-            for(j <- bufferedRow.indices) {
+          untypedRowBuffer.foreach(bufferedRow => {
+            for (j <- bufferedRow.indices) {
               columns(j).append(bufferedRow(j))
             }
             columnsIndex += 1
@@ -66,7 +58,7 @@ class TypedColumnProcessor(numberOfTypeInferingRows: Int = 20) extends RowProces
         state = State.Parsing
 
       case State.Parsing =>
-        for(j <- row.indices) {
+        for (j <- row.indices) {
           columns(j).append(row(j))
         }
         columnsIndex += 1

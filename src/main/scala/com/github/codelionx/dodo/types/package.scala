@@ -31,6 +31,8 @@ package object types {
 
     def parse(value: String): T
 
+    def createTypedColumnBuilder: TypedColumnBuilder[T]
+
     override def compare(that: DataType[_]): Int = orderMapping(this).compare(orderMapping(that))
   }
 
@@ -48,6 +50,8 @@ package object types {
     def parse(value: String): Long = Try {
       value.toLong
     }.getOrElse(0L)
+
+    override def createTypedColumnBuilder: TypedColumnBuilder[Long] = TypedColumnBuilder(this)
   }
 
   final case object DoubleType extends DataType[Double] {
@@ -64,6 +68,8 @@ package object types {
     def parse(value: String): Double = Try {
       value.toDouble
     }.getOrElse(.0)
+
+    override def createTypedColumnBuilder: TypedColumnBuilder[Double] = TypedColumnBuilder(this)
   }
 
   object DateType {
@@ -140,6 +146,8 @@ package object types {
     def parse(value: String): ZonedDateTime = Try {
       format.parse[ZonedDateTime](value, (temp: TemporalAccessor) => ZonedDateTime.from(temp))
     }.getOrElse(ZonedDateTime.ofInstant(Instant.EPOCH, ZoneId.systemDefault()))
+
+    override def createTypedColumnBuilder: TypedColumnBuilder[ZonedDateTime] = TypedColumnBuilder(this)
   }
 
   final case class LocalDateType(format: DateTimeFormatter) extends DataType[LocalDateTime] {
@@ -149,6 +157,8 @@ package object types {
     override def parse(value: String): LocalDateTime = Try {
       format.parse[LocalDateTime](value, (temp: TemporalAccessor) => LocalDateTime.from(temp))
     }.getOrElse(LocalDateTime.ofInstant(Instant.EPOCH, ZoneId.systemDefault()))
+
+    override def createTypedColumnBuilder: TypedColumnBuilder[LocalDateTime] = TypedColumnBuilder(this)
   }
 
   final case object StringType extends DataType[String] {
@@ -156,6 +166,8 @@ package object types {
     override val tpe: ClassTag[String] = ClassTag(classOf[String])
 
     override def parse(value: String): String = value
+
+    override def createTypedColumnBuilder: TypedColumnBuilder[String] = TypedColumnBuilder(this)
   }
 
   final case object NullType extends DataType[Null] {
@@ -165,6 +177,8 @@ package object types {
     def isNull(value: String): Boolean = value == null || value.isEmpty || value.equalsIgnoreCase("null")
 
     override def parse(value: String): Null = null
+
+    override def createTypedColumnBuilder: TypedColumnBuilder[Null] = TypedColumnBuilder(this)
   }
 
 }

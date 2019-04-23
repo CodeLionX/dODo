@@ -1,29 +1,38 @@
 package com.github.codelionx.dodo.types
 
-import java.time.{LocalDateTime, ZonedDateTime}
-
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
-object typedColumns {
+object TypedColumnBuilder {
 
-  final class TypedColumn[T <: Any : ClassTag](val dataType: DataType[T], arr: Array[T]) {
+  def apply[T <: Any : ClassTag](dataType: DataType[T]): TypedColumnBuilder[T] = new TypedColumnBuilder(dataType)
+}
 
-    def toArray: Array[T] = arr
+final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T]) {
 
-    def apply(index: Int): T = arr(index)
-  }
+  private val buffer: ArrayBuffer[T] = ArrayBuffer.empty
 
-  final class TypedColumnBuilder[T <: Any : ClassTag](dataType: DataType[T]) {
+  def toTypedColumn: TypedColumn[T] = new TypedColumnImpl[T](dataType, buffer.toArray)
 
-    private val buffer: ArrayBuffer[T] = ArrayBuffer.empty
+  def toArray: Array[T] = buffer.toArray
 
-    def toTypedColumn: TypedColumn[T] = new TypedColumn[T](dataType, buffer.toArray)
+  def append(elems: String*): Unit = buffer.append(elems.map(dataType.parse): _*)
+}
 
-    def toArray: Array[T] = buffer.toArray
+trait TypedColumn[T <: Any] {
 
-    def append(elems: String*): Unit = buffer.append(elems.map(dataType.parse): _*)
-  }
+  def toArray: Array[T]
+
+  def apply(index: Int): T
+}
+
+private class TypedColumnImpl[T <: Any : ClassTag](val dataType: DataType[T], arr: Array[T]) extends TypedColumn[T] {
+
+  def toArray: Array[T] = arr
+
+  def apply(index: Int): T = arr(index)
+}
+
 
 //  trait TypedColumnBuffer extends TypedColumn {
 //    type T <: Any
@@ -124,4 +133,4 @@ object typedColumns {
 //  object ZonedDateColumn {
 //    def empty: ZonedDateColumn = Array.empty[ZonedDateTime]
 //  }
-}
+//}
