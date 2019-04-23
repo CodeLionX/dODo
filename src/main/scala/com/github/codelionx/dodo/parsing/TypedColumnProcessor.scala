@@ -1,15 +1,16 @@
 package com.github.codelionx.dodo.parsing
 
-import com.github.codelionx.dodo.types.typedColumns
-import com.github.codelionx.dodo.types.typedColumns.{TypedColumn, TypedColumnBuffer}
+import com.github.codelionx.dodo.types
+import com.github.codelionx.dodo.types.{DataType, typedColumns}
+import com.github.codelionx.dodo.types.typedColumns.TypedColumnBuilder
 import com.univocity.parsers.common.ParsingContext
 import com.univocity.parsers.common.processor.RowProcessor
 
-import scala.collection.mutable.ArrayBuffer
+import scala.reflect.ClassTag
 
 class TypedColumnProcessor(numberOfTypeInferingRows: Int = 20) extends RowProcessor {
 
-  var columns: Array[TypedColumnBuffer] = _
+  var columns: Array[TypedColumnBuilder[_ <: Any]] = _
   val untypedRowBuffer: Array[Array[String]] = Array.ofDim(numberOfTypeInferingRows)
   var inferrer: TypeInferrer = _
   var columnsIndex: Int = 0
@@ -37,7 +38,12 @@ class TypedColumnProcessor(numberOfTypeInferingRows: Int = 20) extends RowProces
         columns =  Array.ofDim(types.length)
         types.indices.foreach(i => {
           val dataType = types(i)
-          columns(i) = typedColumns.bufferFromDataType(dataType)
+//          implicit val evidence: <:<[Any, dataType.T] = (l: Any) => dataType.parse(l.toString)
+          implicit class Evidence(d: DataType) {
+            def apply(v1: Any): d.T = (l: Any) => d.parse(l.toString)
+          }
+          val column: TypedColumnBuilder[Any] = typedColumns.bufferFromDataType[Any](dataType)
+          columns(i) = column
         })
 
         // fill column arrays with buffered data
