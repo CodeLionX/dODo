@@ -10,7 +10,7 @@ import scala.util.{Failure, Success, Try}
 
 package object types {
 
-  private def orderMapping(in: DataType) = in match {
+  private def orderMapping(in: DataType[_]) = in match {
     case NullType => 0
     case StringType => 1
     case LongType => 2
@@ -21,22 +21,20 @@ package object types {
 
   object DataType {
 
-    implicit def ordering[A <: DataType]: Ordering[A] =
+    implicit def ordering[A <: DataType[_]]: Ordering[A] =
       Ordering.by(orderMapping)
   }
 
-  sealed trait DataType extends Ordered[DataType] {
-    type T <: Any
+  sealed trait DataType[T <: Any] extends Ordered[DataType[_]] {
 
     val tpe: ClassTag[T]
 
     def parse(value: String): T
 
-    override def compare(that: DataType): Int = orderMapping(this).compare(orderMapping(that))
+    override def compare(that: DataType[_]): Int = orderMapping(this).compare(orderMapping(that))
   }
 
-  final case object LongType extends DataType {
-    override type T = Long
+  final case object LongType extends DataType[Long] {
 
     override val tpe: ClassTag[Long] = ClassTag.Long
 
@@ -52,8 +50,7 @@ package object types {
     }.getOrElse(0L)
   }
 
-  final case object DoubleType extends DataType {
-    override type T = Double
+  final case object DoubleType extends DataType[Double] {
 
     override val tpe: ClassTag[Double] = ClassTag.Double
 
@@ -90,7 +87,7 @@ package object types {
 
       def isDate: Boolean = success
 
-      def dateType: DataType =
+      def dateType: DataType[_ <: Any] =
         if (isZoned)
           ZonedDateType(format)
         else
@@ -136,8 +133,7 @@ package object types {
 
   }
 
-  final case class ZonedDateType(format: DateTimeFormatter) extends DataType {
-    override type T = ZonedDateTime
+  final case class ZonedDateType(format: DateTimeFormatter) extends DataType[ZonedDateTime] {
 
     override val tpe: ClassTag[ZonedDateTime] = ClassTag(classOf[ZonedDateTime])
 
@@ -146,8 +142,7 @@ package object types {
     }.getOrElse(ZonedDateTime.ofInstant(Instant.EPOCH, ZoneId.systemDefault()))
   }
 
-  final case class LocalDateType(format: DateTimeFormatter) extends DataType {
-    override type T = LocalDateTime
+  final case class LocalDateType(format: DateTimeFormatter) extends DataType[LocalDateTime] {
 
     override val tpe: ClassTag[LocalDateTime] = ClassTag(classOf[LocalDateTime])
 
@@ -156,16 +151,14 @@ package object types {
     }.getOrElse(LocalDateTime.ofInstant(Instant.EPOCH, ZoneId.systemDefault()))
   }
 
-  final case object StringType extends DataType {
-    override type T = String
+  final case object StringType extends DataType[String] {
 
     override val tpe: ClassTag[String] = ClassTag(classOf[String])
 
     override def parse(value: String): String = value
   }
 
-  final case object NullType extends DataType {
-    override type T = Null
+  final case object NullType extends DataType[Null] {
 
     override val tpe: ClassTag[Null] = ClassTag.Null
 

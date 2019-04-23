@@ -5,7 +5,7 @@ import com.github.codelionx.dodo.types._
 
 object TypeInferrer {
 
-  def inferType(value: String): DataType = {
+  def inferType(value: String): DataType[_ <: Any] = {
     if (NullType.isNull(value))
       return NullType
 
@@ -32,13 +32,13 @@ trait TypeInferrer {
 
   def refreshTypesFromRow(row: Array[String]): Unit
 
-  def columnTypes: Seq[DataType]
+  def columnTypes: Seq[DataType[Any]]
 
 }
 
 class IterativeTypeInferrer(numberOfColumns: Int) extends TypeInferrer {
 
-  private val types: Array[DataType] = Array.apply( (0 until numberOfColumns).map(_ => NullType): _* )
+  private val types: Array[DataType[Any]] = Array.apply( (0 until numberOfColumns).map(_ => NullType.asInstanceOf[DataType[Any]]): _* )
 
   /**
     * Columns in a row must arrive in the same order every time!
@@ -50,10 +50,10 @@ class IterativeTypeInferrer(numberOfColumns: Int) extends TypeInferrer {
 
     for(i <- row.indices) {
       if(types(i) != StringType && types(i) < newTypes(i)) {
-        types(i) = newTypes(i)
+        types(i) = newTypes(i).asInstanceOf[DataType[Any]]
       }
     }
   }
 
-  override def columnTypes: Seq[DataType] = types
+  override def columnTypes: Seq[DataType[Any]] = types
 }

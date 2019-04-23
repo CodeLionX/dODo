@@ -1,15 +1,18 @@
 package com.github.codelionx.dodo.parsing
 
-import com.github.codelionx.dodo.types
-import com.github.codelionx.dodo.types.{DataType, typedColumns}
+import com.github.codelionx.dodo.types.DataType
 import com.github.codelionx.dodo.types.typedColumns.TypedColumnBuilder
 import com.univocity.parsers.common.ParsingContext
 import com.univocity.parsers.common.processor.RowProcessor
 
-import scala.reflect.ClassTag
-
 class TypedColumnProcessor(numberOfTypeInferingRows: Int = 20) extends RowProcessor {
 
+  object State extends Enumeration {
+    type State = Value
+    val TypeInferring, EmptyingBuffer, Parsing = Value
+  }
+
+  var state: State.State = State.TypeInferring
   var columns: Array[TypedColumnBuilder[_ <: Any]] = _
   val untypedRowBuffer: Array[Array[String]] = Array.ofDim(numberOfTypeInferingRows)
   var inferrer: TypeInferrer = _
@@ -19,56 +22,65 @@ class TypedColumnProcessor(numberOfTypeInferingRows: Int = 20) extends RowProces
   override def processStarted(context: ParsingContext): Unit = {}
 
   override def rowProcessed(row: Array[String], context: ParsingContext): Unit = {
-    if(untypedRowBufferIndex < numberOfTypeInferingRows) {
-      // lazy initialization of type inferrer to use the row size
-      if (inferrer == null) {
-        inferrer = new IterativeTypeInferrer(row.length)
-      }
+    state match {
+      case State.TypeInferring =>
+        // lazy initialization of type inferrer to use the row size
+        if (inferrer == null) {
+          inferrer = new IterativeTypeInferrer(row.length)
+        }
 
-      inferrer.refreshTypesFromRow(row)
-      untypedRowBuffer(untypedRowBufferIndex) = row
-      untypedRowBufferIndex += 1
+        inferrer.refreshTypesFromRow(row)
+        untypedRowBuffer(untypedRowBufferIndex) = row
+        untypedRowBufferIndex += 1
 
-    } else {
-      // type inferring finished, continue with reading the buffer again and parse it to the right types
-      if (untypedRowBuffer.nonEmpty) {
-        val types = inferrer.columnTypes
+        if(untypedRowBufferIndex >= numberOfTypeInferingRows)
+          state = State.EmptyingBuffer
 
-        // initialize column arrays
-        columns =  Array.ofDim(types.length)
-        types.indices.foreach(i => {
-          val dataType = types(i)
-//          implicit val evidence: <:<[Any, dataType.T] = (l: Any) => dataType.parse(l.toString)
-          implicit class Evidence(d: DataType) {
-            def apply(v1: Any): d.T = (l: Any) => d.parse(l.toString)
-          }
-          val column: TypedColumnBuilder[Any] = typedColumns.bufferFromDataType[Any](dataType)
-          columns(i) = column
-        })
+      case State.EmptyingBuffer =>
+        // type inferring finished, continue with reading the buffer again and parse it to the right types
+        if (untypedRowBuffer.nonEmpty) {
+          val types = inferrer.columnTypes
 
-        // fill column arrays with buffered data
-        untypedRowBuffer.foreach( row => {
-          val values = types.indices.map( i =>
-            types(i).parse(row(i))
-          )
-          for(j <- values.indices) {
-            val tBuffer = columns(columnsIndex)
-            tBuffer.append(values(j))
-          }
-          columnsIndex += 1
-        })
+          // initialize column arrays
+          columns =  Array.ofDim(types.length)
+          types.indices.foreach(i => {
+            val dataType = types(i)
+            val String_ = classOf[String]
+            val Double_ = classOf[Double]
+            dataType.tpe.runtimeClass match {
+              case String_ => columns(i) = new TypedColumnBuilder[String](dataType.asInstanceOf[DataType[String]])
+              case Double_ => columns(i) = new TypedColumnBuilder[Double](dataType.asInstanceOf[DataType[Double]])
+              case _ => throw new RuntimeException(s"DataType $dataType is not supported!")
+            }
+          })
 
-        println("Buffered and reparsed columns:")
-        println(s"Current row index: $columnsIndex")
-        println(columns.zip(inferrer.columnTypes).map{
-          case (xs, t) => t.toString + xs.backingArray.mkString(", ")
-        }.mkString("\n  ")
-        )
-      }
+          // fill column arrays with buffered data
+          untypedRowBuffer.foreach( bufferedRow => {
+            for(j <- bufferedRow.indices) {
+              columns(j).append(bufferedRow(j))
+            }
+            columnsIndex += 1
+          })
+
+        }
+        state = State.Parsing
+
+      case State.Parsing =>
+        for(j <- row.indices) {
+          columns(j).append(row(j))
+        }
+        columnsIndex += 1
     }
   }
 
   override def processEnded(context: ParsingContext): Unit = {
     println(inferrer.columnTypes.mkString(" - "))
+    println("Buffered and reparsed columns:")
+    println(s"Current row index: $columnsIndex")
+    println("  " +
+      columns.zip(inferrer.columnTypes).map {
+        case (xs, t) => t.toString + ": " + xs.toArray.mkString(", ")
+      }.mkString("\n  ")
+    )
   }
 }
