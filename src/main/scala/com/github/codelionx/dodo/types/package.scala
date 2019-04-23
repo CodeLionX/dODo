@@ -4,6 +4,7 @@ import java.time._
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAccessor
 
+import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
 
 
@@ -27,6 +28,8 @@ package object types {
   sealed trait DataType extends Ordered[DataType] {
     type T <: Any
 
+    val tpe: ClassTag[T]
+
     def parse(value: String): T
 
     override def compare(that: DataType): Int = orderMapping(this).compare(orderMapping(that))
@@ -34,6 +37,8 @@ package object types {
 
   final case object LongType extends DataType {
     override type T = Long
+
+    override val tpe: ClassTag[Long] = ClassTag.Long
 
     def isLong(value: String): Boolean = Try {
       value.toLong
@@ -49,6 +54,8 @@ package object types {
 
   final case object DoubleType extends DataType {
     override type T = Double
+
+    override val tpe: ClassTag[Double] = ClassTag.Double
 
     def isDouble(value: String): Boolean = Try {
       value.toDouble
@@ -132,6 +139,8 @@ package object types {
   final case class ZonedDateType(format: DateTimeFormatter) extends DataType {
     override type T = ZonedDateTime
 
+    override val tpe: ClassTag[ZonedDateTime] = ClassTag(classOf[ZonedDateTime])
+
     def parse(value: String): ZonedDateTime = Try {
       format.parse[ZonedDateTime](value, (temp: TemporalAccessor) => ZonedDateTime.from(temp))
     }.getOrElse(ZonedDateTime.ofInstant(Instant.EPOCH, ZoneId.systemDefault()))
@@ -139,6 +148,8 @@ package object types {
 
   final case class LocalDateType(format: DateTimeFormatter) extends DataType {
     override type T = LocalDateTime
+
+    override val tpe: ClassTag[LocalDateTime] = ClassTag(classOf[LocalDateTime])
 
     override def parse(value: String): LocalDateTime = Try {
       format.parse[LocalDateTime](value, (temp: TemporalAccessor) => LocalDateTime.from(temp))
@@ -148,11 +159,15 @@ package object types {
   final case object StringType extends DataType {
     override type T = String
 
+    override val tpe: ClassTag[String] = ClassTag(classOf[String])
+
     override def parse(value: String): String = value
   }
 
   final case object NullType extends DataType {
     override type T = Null
+
+    override val tpe: ClassTag[Null] = ClassTag.Null
 
     def isNull(value: String): Boolean = value == null || value.isEmpty || value.equalsIgnoreCase("null")
 
