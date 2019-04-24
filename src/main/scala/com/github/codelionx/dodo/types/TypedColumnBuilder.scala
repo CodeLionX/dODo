@@ -14,11 +14,12 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
 
   private val buffer: ArrayBuffer[T] = ArrayBuffer.empty
 
-  def toTypedColumn: TypedColumn[T] = new TypedColumnImpl[T](dataType, buffer.toArray)
+  def toTypedColumn: TypedColumn[T] = new TypedColumnImpl(dataType, buffer.toArray)
 
   def toArray: Array[T] = buffer.toArray
 
-  def append(elems: String*): Unit = buffer.append(elems.map(dataType.parse): _*)
+//  def append(elems: String*): Unit = buffer.append(elems.map(dataType.parse): _*)
+  def append(elems: String*): Unit = buffer.append(elems.map(_.asInstanceOf[T]): _*)
 
   private class TypedColumnImpl(val dataType: DataType[T], arr: Array[T]) extends TypedColumn[T] {
 

@@ -2,7 +2,6 @@ package com.github.codelionx.dodo
 
 import java.time._
 import java.time.format.DateTimeFormatter
-import java.time.temporal.TemporalAccessor
 
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
@@ -29,8 +28,6 @@ package object types {
 
     val tpe: ClassTag[T]
 
-    def parse(value: String): T
-
     def createTypedColumnBuilder: TypedColumnBuilder[T]
 
     override def compare(that: DataType[_]): Int = orderMapping(this).compare(orderMapping(that))
@@ -47,10 +44,6 @@ package object types {
       case Failure(_) => false
     }
 
-    def parse(value: String): Long = Try {
-      value.toLong
-    }.getOrElse(0L)
-
     override def createTypedColumnBuilder: TypedColumnBuilder[Long] = TypedColumnBuilder(this)
   }
 
@@ -65,10 +58,6 @@ package object types {
       case Failure(_) => false
     }
 
-    def parse(value: String): Double = Try {
-      value.toDouble
-    }.getOrElse(.0)
-
     override def createTypedColumnBuilder: TypedColumnBuilder[Double] = TypedColumnBuilder(this)
   }
 
@@ -78,9 +67,9 @@ package object types {
     private val datetimeFormats = Seq(DateTimeFormatter.ISO_DATE_TIME, DateTimeFormatter.RFC_1123_DATE_TIME)
     private val dateFormats = Seq(DateTimeFormatter.ISO_DATE, DateTimeFormatter.BASIC_ISO_DATE, DateTimeFormatter.ISO_LOCAL_DATE)
 
-    def isDateChecker(value: String) = new DateParser(value)
+    def dateChecker(value: String) = new DateChecker(value)
 
-    class DateParser {
+    class DateChecker {
       private var format: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
       private var isZoned: Boolean = false
       private var success: Boolean = false
@@ -143,10 +132,6 @@ package object types {
 
     override val tpe: ClassTag[ZonedDateTime] = ClassTag(classOf[ZonedDateTime])
 
-    def parse(value: String): ZonedDateTime = Try {
-      format.parse[ZonedDateTime](value, (temp: TemporalAccessor) => ZonedDateTime.from(temp))
-    }.getOrElse(ZonedDateTime.ofInstant(Instant.EPOCH, ZoneId.systemDefault()))
-
     override def createTypedColumnBuilder: TypedColumnBuilder[ZonedDateTime] = TypedColumnBuilder(this)
   }
 
@@ -154,18 +139,12 @@ package object types {
 
     override val tpe: ClassTag[LocalDateTime] = ClassTag(classOf[LocalDateTime])
 
-    override def parse(value: String): LocalDateTime = Try {
-      format.parse[LocalDateTime](value, (temp: TemporalAccessor) => LocalDateTime.from(temp))
-    }.getOrElse(LocalDateTime.ofInstant(Instant.EPOCH, ZoneId.systemDefault()))
-
     override def createTypedColumnBuilder: TypedColumnBuilder[LocalDateTime] = TypedColumnBuilder(this)
   }
 
   final case object StringType extends DataType[String] {
 
     override val tpe: ClassTag[String] = ClassTag(classOf[String])
-
-    override def parse(value: String): String = value
 
     override def createTypedColumnBuilder: TypedColumnBuilder[String] = TypedColumnBuilder(this)
   }
@@ -175,8 +154,6 @@ package object types {
     override val tpe: ClassTag[Null] = ClassTag.Null
 
     def isNull(value: String): Boolean = value == null || value.isEmpty || value.equalsIgnoreCase("null")
-
-    override def parse(value: String): Null = null
 
     override def createTypedColumnBuilder: TypedColumnBuilder[Null] = TypedColumnBuilder(this)
   }

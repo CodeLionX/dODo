@@ -9,7 +9,7 @@ object TypeInferrer {
     if (NullType.isNull(value))
       return NullType
 
-    val dateChecker = DateType.isDateChecker(value)
+    val dateChecker = DateType.dateChecker(value)
     if (dateChecker.isDate) {
       dateChecker.dateType
 
