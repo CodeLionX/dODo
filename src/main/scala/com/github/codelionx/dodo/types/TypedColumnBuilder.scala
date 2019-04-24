@@ -28,7 +28,7 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
   /**
     * Returns the [[com.github.codelionx.dodo.types.TypedColumn]] instance with all the parsed cell data.
     */
-  def toTypedColumn: TypedColumn[T] = new TypedColumnImpl(dataType, buffer.toArray)
+  def toTypedColumn: TypedColumn[T] = TypedColumnImpl(dataType, buffer.toArray)
 
   def toArray: Array[T] = buffer.toArray
 
