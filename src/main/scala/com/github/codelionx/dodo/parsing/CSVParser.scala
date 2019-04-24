@@ -31,18 +31,25 @@ object CSVParser {
 
   def useProcessor(file: String): Unit = {
     val s = settings.clone()
-    s.setProcessor(new TypedColumnProcessor)
+    val p = TypedColumnProcessor()
+    s.setProcessor(p)
     val parser = new CsvParser(s)
     parser.parse(new File(file))
+
+    val data = p.columnarData
+    println("Column Types:")
+    println(s"  ${data.map(_.dataType).mkString(" ")}")
+    println("Parsed columns:")
+    println(s"  Number of rows: ${data(0).toArray.length}")
   }
 
   def main(args: Array[String]): Unit = {
-    println("Press <enter> to start parsing the input")
-    StdIn.readLine()
-    println("Beginning ...")
+//    println("Press <enter> to start parsing the input")
+//    StdIn.readLine()
+//    println("Beginning ...")
 //    CSVParser.read("data/iris.csv")
     CSVParser.useProcessor("data/flights_20_500k.csv")
-    println("... finished. Press <enter> to end session.")
-    StdIn.readLine()
+//    println("... finished. Press <enter> to end session.")
+//    StdIn.readLine()
   }
 }
