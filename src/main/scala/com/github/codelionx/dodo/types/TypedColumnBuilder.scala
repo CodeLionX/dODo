@@ -7,6 +7,7 @@ import scala.reflect.ClassTag
 object TypedColumnBuilder {
 
   def apply[T <: Any : ClassTag](dataType: DataType[T]): TypedColumnBuilder[T] = new TypedColumnBuilder(dataType)
+
 }
 
 final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T]) {
@@ -18,18 +19,11 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
   def toArray: Array[T] = buffer.toArray
 
   def append(elems: String*): Unit = buffer.append(elems.map(dataType.parse): _*)
-}
 
-trait TypedColumn[T <: Any] {
+  private class TypedColumnImpl(val dataType: DataType[T], arr: Array[T]) extends TypedColumn[T] {
 
-  def toArray: Array[T]
+    def toArray: Array[T] = arr
 
-  def apply(index: Int): T
-}
-
-private class TypedColumnImpl[T <: Any : ClassTag](val dataType: DataType[T], arr: Array[T]) extends TypedColumn[T] {
-
-  def toArray: Array[T] = arr
-
-  def apply(index: Int): T = arr(index)
+    def apply(index: Int): T = arr(index)
+  }
 }
