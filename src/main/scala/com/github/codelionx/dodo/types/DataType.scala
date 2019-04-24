@@ -10,7 +10,7 @@ import scala.util.{Failure, Success, Try}
 
 object DataType {
 
-  private def orderMapping(in: DataType[_]) = in match {
+  private def orderMapping(in: DataType[_]): Int = in match {
     case NullType => 0
     case StringType => 1
     case LongType => 2
@@ -19,25 +19,58 @@ object DataType {
     case ZonedDateType(_) => 5
   }
 
+  /**
+    * Import `DataType._` to use this implicit DataType ordering.
+    */
   implicit def ordering[A <: DataType[_]]: Ordering[A] =
     Ordering.by(orderMapping)
 }
 
+/**
+  * Represents a data type supported by this application.
+  *
+  * @see [[StringType]], [[LongType]], [[DoubleType]], [[NullType]], [[ZonedDateType]], [[LocalDateType]]
+  * @tparam T underlying (primitive) type
+  */
 sealed trait DataType[T <: Any] extends Ordered[DataType[_]] {
 
+  /**
+    * Returns the underlying type's [[scala.reflect.ClassTag]]. Can be used for pattern matching or using the type
+    * on runtime.
+    *
+    * @example {{{
+    * val String_ = classOf[String]
+    * val dataType: DataType[_] = _
+    * dataType.tpe.runtimeClass match {
+    *   case String_ => // do sth with the string
+    * }
+    * }}}
+    */
   val tpe: ClassTag[T]
 
+  /**
+    * Parses the `value` to the underlying (primitive) type or uses the default value.
+    */
   def parse(value: String): T
 
+  /**
+    * Creates a [[com.github.codelionx.dodo.types.TypedColumnBuilder]] that can be used to create a column of this type.
+    */
   def createTypedColumnBuilder: TypedColumnBuilder[T]
 
   override def compare(that: DataType[_]): Int = DataType.orderMapping(this).compare(DataType.orderMapping(that))
 }
 
+/**
+  * Represents a primitive [[Long]].
+  */
 case object LongType extends DataType[Long] {
 
   override val tpe: ClassTag[Long] = ClassTag.Long
 
+  /**
+    * Checks if the value is a [[Long]] value.
+    */
   def isLong(value: String): Boolean = Try {
     value.toLong
   } match {
@@ -52,10 +85,16 @@ case object LongType extends DataType[Long] {
   override def createTypedColumnBuilder: TypedColumnBuilder[Long] = TypedColumnBuilder(this)
 }
 
+/**
+  * Represents a primitive [[Double]].
+  */
 case object DoubleType extends DataType[Double] {
 
   override val tpe: ClassTag[Double] = ClassTag.Double
 
+  /**
+    * Checks if the value is a [[Double]] value.
+    */
   def isDouble(value: String): Boolean = Try {
     value.toDouble
   } match {
@@ -70,29 +109,53 @@ case object DoubleType extends DataType[Double] {
   override def createTypedColumnBuilder: TypedColumnBuilder[Double] = TypedColumnBuilder(this)
 }
 
+/**
+  * Encapsulates zoned and unzoned date time types and their different formats.
+  */
 object DateType {
 
   // supported date formats
   private val datetimeFormats = Seq(DateTimeFormatter.ISO_DATE_TIME, DateTimeFormatter.RFC_1123_DATE_TIME)
   private val dateFormats = Seq(DateTimeFormatter.ISO_DATE, DateTimeFormatter.BASIC_ISO_DATE, DateTimeFormatter.ISO_LOCAL_DATE)
 
-  def isDateChecker(value: String) = new DateParser(value)
+  /**
+    * Checks the value for different datetime and date formats.
+    *
+    * @return a [[DateType$.DateChecker]] that provides access if the check was successful and if yes to the correct
+    *         data type
+    */
+  def isDateChecker(value: String) = new DateChecker(value)
 
-  class DateParser {
+  /**
+    * Checks a string if it is a valid date and gives access to the result and the data type.
+    */
+  class DateChecker {
+
     private var format: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
     private var isZoned: Boolean = false
     private var success: Boolean = false
 
-    def this(value: String) = {
+    private[DateType] def this(value: String) = {
       this()
       checkForDateTime(value)
       checkForDate(value)
     }
 
+    /**
+      * Returns `true` if the value is a date
+      */
     def isDate: Boolean = success
 
+    /**
+      * If the value is a valid date, returns either a [[ZonedDateType]] or a [[LocalDateType]]. If the value is no
+      * valid date, an exception is thrown.
+      *
+      * @note only call if [[isDate]] is `true`
+      */
     def dateType: DataType[_ <: Any] =
-      if (isZoned)
+      if (!success)
+        throw new IllegalAccessException("The value is not a valid date.")
+      else if (isZoned)
         ZonedDateType(format)
       else
         LocalDateType(format)
@@ -137,6 +200,9 @@ object DateType {
 
 }
 
+/**
+  * Represents a [[ZonedDateTime]].
+  */
 final case class ZonedDateType(format: DateTimeFormatter) extends DataType[ZonedDateTime] {
 
   override val tpe: ClassTag[ZonedDateTime] = ClassTag(classOf[ZonedDateTime])
@@ -148,6 +214,9 @@ final case class ZonedDateType(format: DateTimeFormatter) extends DataType[Zoned
   override def createTypedColumnBuilder: TypedColumnBuilder[ZonedDateTime] = TypedColumnBuilder(this)
 }
 
+/**
+  * Represents a [[LocalDateTime]].
+  */
 final case class LocalDateType(format: DateTimeFormatter) extends DataType[LocalDateTime] {
 
   override val tpe: ClassTag[LocalDateTime] = ClassTag(classOf[LocalDateTime])
@@ -159,6 +228,9 @@ final case class LocalDateType(format: DateTimeFormatter) extends DataType[Local
   override def createTypedColumnBuilder: TypedColumnBuilder[LocalDateTime] = TypedColumnBuilder(this)
 }
 
+/**
+  * Represents a [[String]].
+  */
 case object StringType extends DataType[String] {
 
   override val tpe: ClassTag[String] = ClassTag(classOf[String])
@@ -168,10 +240,16 @@ case object StringType extends DataType[String] {
   override def createTypedColumnBuilder: TypedColumnBuilder[String] = TypedColumnBuilder(this)
 }
 
+/**
+  * Represents a [[Null]].
+  */
 case object NullType extends DataType[Null] {
 
   override val tpe: ClassTag[Null] = ClassTag.Null
 
+  /**
+    * Checks if the value is a `null` value.
+    */
   def isNull(value: String): Boolean = value == null || value.isEmpty || value.equalsIgnoreCase("null")
 
   override def parse(value: String): Null = null
