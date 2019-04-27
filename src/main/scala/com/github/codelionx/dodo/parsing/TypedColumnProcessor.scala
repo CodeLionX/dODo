@@ -2,7 +2,7 @@ package com.github.codelionx.dodo.parsing
 
 import com.github.codelionx.dodo.types.{TypedColumn, TypedColumnBuilder}
 import com.univocity.parsers.common.ParsingContext
-import com.univocity.parsers.common.processor.RowProcessor
+import com.univocity.parsers.common.processor.AbstractRowProcessor
 
 
 object TypedColumnProcessor {
@@ -13,7 +13,15 @@ object TypedColumnProcessor {
 
 }
 
-class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends RowProcessor {
+/**
+  * A [[com.univocity.parsers.common.processor.RowProcessor]] that infers the data types of the read CSV rows and
+  * stores them in [[com.github.codelionx.dodo.types.TypedColumn]]s. The type inference is based on the first `numberOfTypeInferringRows` rows read.
+  * After wards all following values will be parsed to the determined data type.
+  *
+  * @see [[com.github.codelionx.dodo.parsing.TypeInferrer]] for information how the data types are inferred
+  * @param numberOfTypeInferringRows rows used for inferring and refining the data types for the columns
+  */
+class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends AbstractRowProcessor {
 
   private object State extends Enumeration {
     type State = Value
@@ -66,12 +74,12 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends RowPr
     columnsIndex += 1
   }
 
+  /**
+    * Returns the columnar data parsed from the CSV file as an array of [[com.github.codelionx.dodo.types.TypedColumn]]s.
+    */
   def columnarData: Array[TypedColumn[_ <: Any]] = columns.map(_.toTypedColumn)
 
   // from RowProcessor
-
-  override def processStarted(context: ParsingContext): Unit = {}
-
   override def rowProcessed(row: Array[String], context: ParsingContext): Unit = {
     state match {
       case State.TypeInferring =>
@@ -88,6 +96,4 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends RowPr
         parseRow(row)
     }
   }
-
-  override def processEnded(context: ParsingContext): Unit = {}
 }
