@@ -2,12 +2,17 @@ package com.github.codelionx.dodo.parsing
 
 import java.io.File
 
-import com.univocity.parsers.csv.CsvParserSettings
-import com.univocity.parsers.csv.CsvParser
+import com.github.codelionx.dodo.types.TypedColumn
+import com.univocity.parsers.csv.{CsvParser, CsvParserSettings}
 
-import scala.io.{Codec, StdIn}
-import scala.collection.JavaConverters._
+import scala.io.Codec
 
+
+/**
+  * CSV Parser for reading input files and converting them to a list of
+  * [[com.github.codelionx.dodo.types.TypedColumn]]s. Use the method
+  * [[com.github.codelionx.dodo.parsing.CSVParser#parse]] to read input from a file.
+  */
 object CSVParser {
 
   private implicit val fileCodec: Codec = Codec.UTF8
@@ -19,37 +24,31 @@ object CSVParser {
     settings
   }
 
-  def read(file: String): Unit = {
-    val parser = new CsvParser(settings)
-    parser.parseAllRecords(new File(file))
-      .asScala
-      .map( rec => rec.getValues)
-      .map(_.mkString(" "))
-      .foreach(println)
-    println(parser.getRecordMetadata.typeOf(4))
-  }
-
-  def useProcessor(file: String): Unit = {
-    val s = settings.clone()
+  /**
+    * Reads a CSV file and parses it to a list of [[com.github.codelionx.dodo.types.TypedColumn]]s.
+    *
+    * @param file file name, can contain relative or absolute paths, see [[java.io.File]] for more infos
+    * @return the list of [[com.github.codelionx.dodo.types.TypedColumn]]s containing all data of the file
+    */
+  def parse(file: String): Array[TypedColumn[_]] = {
     val p = TypedColumnProcessor()
+    val s = settings.clone()
     s.setProcessor(p)
     val parser = new CsvParser(s)
-    parser.parse(new File(file))
 
-    val data = p.columnarData
-    println("Column Types:")
-    println(s"  ${data.map(_.dataType).mkString(" ")}")
-    println("Parsed columns:")
-    println(s"  Number of rows: ${data(0).toArray.length}")
+    // parse and return result
+    parser.parse(new File(file))
+    p.columnarData
   }
 
   def main(args: Array[String]): Unit = {
-//    println("Press <enter> to start parsing the input")
-//    StdIn.readLine()
-//    println("Beginning ...")
-//    CSVParser.read("data/iris.csv")
-    CSVParser.useProcessor("data/flights_20_500k.csv")
-//    println("... finished. Press <enter> to end session.")
-//    StdIn.readLine()
+    val data = CSVParser.parse("data/iris.csv")
+    println("Columns:")
+    println(data.map(tcol =>
+      s"""|Column of ${tcol.dataType}:
+          |===============================
+          |${tcol.toArray.mkString(",")}
+          |""".stripMargin
+    ).mkString("\n"))
   }
 }
