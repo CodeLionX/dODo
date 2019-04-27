@@ -7,7 +7,7 @@ import scala.reflect.ClassTag
 object TypedColumnBuilder {
 
   /**
-    * Creates a new [[TypedColumnBuilder]] from the `dataType`.
+    * Creates a new [[com.github.codelionx.dodo.types.TypedColumnBuilder]] from the `dataType`.
     *
     * @param dataType specifies the column's type
     */
@@ -17,7 +17,7 @@ object TypedColumnBuilder {
 
 /**
   * Creates a [[com.github.codelionx.dodo.types.TypedColumn]] instance by iteratively calling
-  * [[TypedColumnBuilder#append]] with a cell values as [[String]].
+  * [[com.github.codelionx.dodo.types.TypedColumnBuilder#append]] with a cell values as [[String]].
   *
   * @param dataType defines the column's data type and how the cells are parsed
   */
@@ -39,9 +39,11 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
 
   private case class TypedColumnImpl(dataType: DataType[T], arr: Array[T]) extends TypedColumn[T] {
 
-    def toArray: Array[T] = arr
+    override def toArray: Array[T] = arr
 
-    def apply(index: Int): T = arr(index)
+    override def apply(i: Int): T = arr.apply(i)
+
+    override def update(i: Int, x: T): Unit = arr.update(i, x)
   }
 
 }

@@ -6,9 +6,9 @@ import com.github.codelionx.dodo.types._
 object TypeInferrer {
 
   /**
-    * Infers the type of the value and returns it as an instance of [[DataType]].
+    * Infers the type of the value and returns it as an instance of [[com.github.codelionx.dodo.types.DataType]].
     *
-    * @note The value is not transformed! You can do this by using [[DataType.parse]].
+    * @note The value is not transformed! You can do this by using [[com.github.codelionx.dodo.types.DataType#parse]].
     */
   def inferType(value: String): DataType[_ <: Any] = {
     if (NullType.isNull(value))
@@ -41,7 +41,7 @@ trait TypeInferrer {
   def inferTypesFromRow(row: Array[String]): Unit
 
   /**
-    * Returns the inferred column types as instance of [[DataType]].
+    * Returns the inferred column types as instance of [[com.github.codelionx.dodo.types.DataType]].
     */
   def columnTypes: Seq[DataType[Any]]
 
@@ -49,7 +49,7 @@ trait TypeInferrer {
 
 /**
   * Type inferrer that iteratively refines the column types each time called. The type order (which type is more
-  * specific than another one) is defined in [[com.github.codelionx.dodo.types.DateType$.ordering]].
+  * specific than another one) is defined in [[com.github.codelionx.dodo.types.DataType$#ordering]].
   *
   * @param numberOfColumns used to initialize the column data type representation
   */

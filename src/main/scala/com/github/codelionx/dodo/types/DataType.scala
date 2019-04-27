@@ -29,7 +29,12 @@ object DataType {
 /**
   * Represents a data type supported by this application.
   *
-  * @see [[StringType]], [[LongType]], [[DoubleType]], [[NullType]], [[ZonedDateType]], [[LocalDateType]]
+  * @see [[com.github.codelionx.dodo.types.StringType]],
+  *      [[com.github.codelionx.dodo.types.LongType]],
+  *      [[com.github.codelionx.dodo.types.DoubleType]],
+  *      [[com.github.codelionx.dodo.types.NullType]],
+  *      [[com.github.codelionx.dodo.types.ZonedDateType]],
+  *      [[com.github.codelionx.dodo.types.LocalDateType]]
   * @tparam T underlying (primitive) type
   */
 sealed trait DataType[T <: Any] extends Ordered[DataType[_]] {
@@ -62,14 +67,14 @@ sealed trait DataType[T <: Any] extends Ordered[DataType[_]] {
 }
 
 /**
-  * Represents a primitive [[Long]].
+  * Represents a primitive [[scala.Long]].
   */
 case object LongType extends DataType[Long] {
 
   override val tpe: ClassTag[Long] = ClassTag.Long
 
   /**
-    * Checks if the value is a [[Long]] value.
+    * Checks if the value is a [[scala.Long]] value.
     */
   def isLong(value: String): Boolean = Try {
     value.toLong
@@ -86,14 +91,14 @@ case object LongType extends DataType[Long] {
 }
 
 /**
-  * Represents a primitive [[Double]].
+  * Represents a primitive [[scala.Double]].
   */
 case object DoubleType extends DataType[Double] {
 
   override val tpe: ClassTag[Double] = ClassTag.Double
 
   /**
-    * Checks if the value is a [[Double]] value.
+    * Checks if the value is a [[scala.Double]] value.
     */
   def isDouble(value: String): Boolean = Try {
     value.toDouble
@@ -121,7 +126,7 @@ object DateType {
   /**
     * Checks the value for different datetime and date formats.
     *
-    * @return a [[DateType$.DateChecker]] that provides access if the check was successful and if yes to the correct
+    * @return a [[com.github.codelionx.dodo.types.DateType.DateChecker]] that provides access if the check was successful and if yes to the correct
     *         data type
     */
   def isDateChecker(value: String) = new DateChecker(value)
@@ -147,10 +152,11 @@ object DateType {
     def isDate: Boolean = success
 
     /**
-      * If the value is a valid date, returns either a [[ZonedDateType]] or a [[LocalDateType]]. If the value is no
+      * If the value is a valid date, returns either a [[com.github.codelionx.dodo.types.ZonedDateType]] or a
+      * [[com.github.codelionx.dodo.types.LocalDateType]]. If the value is no
       * valid date, an exception is thrown.
       *
-      * @note only call if [[isDate]] is `true`
+      * @note only call if [[com.github.codelionx.dodo.types.DateType.DateChecker#isDate]] is `true`
       */
     def dateType: DataType[_ <: Any] =
       if (!success)
@@ -201,7 +207,7 @@ object DateType {
 }
 
 /**
-  * Represents a [[ZonedDateTime]].
+  * Represents a [[java.time.ZonedDateTime]].
   */
 final case class ZonedDateType(format: DateTimeFormatter) extends DataType[ZonedDateTime] {
 
@@ -215,7 +221,7 @@ final case class ZonedDateType(format: DateTimeFormatter) extends DataType[Zoned
 }
 
 /**
-  * Represents a [[LocalDateTime]].
+  * Represents a [[java.time.LocalDateTime]].
   */
 final case class LocalDateType(format: DateTimeFormatter) extends DataType[LocalDateTime] {
 
@@ -229,7 +235,7 @@ final case class LocalDateType(format: DateTimeFormatter) extends DataType[Local
 }
 
 /**
-  * Represents a [[String]].
+  * Represents a [[scala.Predef.String]].
   */
 case object StringType extends DataType[String] {
 
