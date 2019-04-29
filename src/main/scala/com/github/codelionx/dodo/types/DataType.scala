@@ -129,7 +129,7 @@ object DateType {
     * @return a [[com.github.codelionx.dodo.types.DateType.DateChecker]] that provides access if the check was successful and if yes to the correct
     *         data type
     */
-  def isDateChecker(value: String) = new DateChecker(value)
+  def dateChecker(value: String) = new DateChecker(value)
 
   /**
     * Checks a string if it is a valid date and gives access to the result and the data type.

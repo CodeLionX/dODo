@@ -14,21 +14,17 @@ object TypeInferrer {
     if (NullType.isNull(value))
       return NullType
 
-    val dateChecker = DateType.isDateChecker(value)
-    if (dateChecker.isDate) {
-      dateChecker.dateType
+    val dateChecker = DateType.dateChecker(value)
+    if (dateChecker.isDate)
+      return dateChecker.dateType
 
-    } else {
-      if (LongType.isLong(value))
-        LongType
+    if (LongType.isLong(value))
+      return LongType
 
-      else if (DoubleType.isDouble(value))
-        DoubleType
+    if (DoubleType.isDouble(value))
+      return DoubleType
 
-      else
-        StringType
-
-    }
+    StringType
   }
 
 }

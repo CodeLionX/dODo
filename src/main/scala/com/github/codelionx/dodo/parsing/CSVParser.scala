@@ -30,7 +30,7 @@ object CSVParser {
     * @param file file name, can contain relative or absolute paths, see [[java.io.File]] for more infos
     * @return the list of [[com.github.codelionx.dodo.types.TypedColumn]]s containing all data of the file
     */
-  def parse(file: String): Array[TypedColumn[_]] = {
+  def parse(file: String): Array[TypedColumn[Any]] = {
     val p = TypedColumnProcessor()
     val s = settings.clone()
     s.setProcessor(p)

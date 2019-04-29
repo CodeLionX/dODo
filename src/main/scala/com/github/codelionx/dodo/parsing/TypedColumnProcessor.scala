@@ -29,7 +29,7 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends Abstr
   }
 
   private var state: State.State = State.TypeInferring
-  private var columns: Array[TypedColumnBuilder[_ <: Any]] = _
+  private var columns: Array[TypedColumnBuilder[Any]] = _
   private val untypedRowBuffer: Array[Array[String]] = Array.ofDim(numberOfTypeInferringRows)
   private var inferrer: TypeInferrer = _
   private var columnsIndex: Int = 0
@@ -77,7 +77,7 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends Abstr
   /**
     * Returns the columnar data parsed from the CSV file as an array of [[com.github.codelionx.dodo.types.TypedColumn]]s.
     */
-  def columnarData: Array[TypedColumn[_ <: Any]] = columns.map(_.toTypedColumn)
+  def columnarData: Array[TypedColumn[Any]] = columns.map(_.toTypedColumn)
 
   // from RowProcessor
   override def rowProcessed(row: Array[String], context: ParsingContext): Unit = {
