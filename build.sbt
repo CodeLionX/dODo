@@ -10,8 +10,12 @@ version := "0.0.1"
 
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
+  "com.typesafe.akka" %% "akka-cluster" % akkaVersion,
+  "com.typesafe.akka" %% "akka-cluster-tools" % akkaVersion,
   // csv parsing
   "com.univocity" % "univocity-parsers" % univocityVersion,
+  // logging
+  "ch.qos.logback" % "logback-classic" % "1.2.3",
   // test
   "com.typesafe.akka" %% "akka-testkit" % akkaVersion,
   "org.scalatest" %% "scalatest" % "3.0.5" % "test",
