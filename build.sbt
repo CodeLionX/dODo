@@ -15,6 +15,7 @@ libraryDependencies ++= Seq(
   // csv parsing
   "com.univocity" % "univocity-parsers" % univocityVersion,
   // logging
+  "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
   "ch.qos.logback" % "logback-classic" % "1.2.3",
   // test
   "com.typesafe.akka" %% "akka-testkit" % akkaVersion,
