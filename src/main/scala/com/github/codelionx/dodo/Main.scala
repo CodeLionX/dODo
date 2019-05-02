@@ -14,12 +14,12 @@ object Main {
     val port = 7877
 
     val system = ActorSystem.actorSystem(actorSystemName, ActorSystem.configuration(
-      actorSystemName,
-      masterRole,
-      host,
-      port,
-      host,
-      port
+      actorSystemName = actorSystemName,
+      actorSystemRole = masterRole,
+      host = host,
+      port = port,
+      masterHost = host,
+      masterPort = port
     ))
 
     val cluster = Cluster(system)
