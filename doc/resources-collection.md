@@ -13,3 +13,4 @@ This is a collection of helpful resources and other related information.
 ## Informational
 
 - [Micro-optimizing your Scala code](http://www.lihaoyi.com/post/MicrooptimizingyourScalacode.html): blog post from Haoyi to micro-optimize scala code
+- [Scala Inliner and Optimizer](https://www.lightbend.com/blog/scala-inliner-optimizer): blog post about the Scala optimizer and the `@inline` annotation. How to use the Scala optimizer.
