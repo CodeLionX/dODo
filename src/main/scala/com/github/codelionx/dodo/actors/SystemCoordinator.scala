@@ -1,6 +1,7 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, Props}
+
 
 object SystemCoordinator {
 
@@ -10,7 +11,8 @@ object SystemCoordinator {
 
 }
 
-class SystemCoordinator(dataSource: String) extends Actor with ActorLogging{
+class SystemCoordinator(dataSource: String) extends Actor with ActorLogging {
+
   import SystemCoordinator._
 
   // TODO: get dataHolder to read data from dataSource
@@ -31,9 +33,4 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging{
     // TODO
     case _ => log.info("Unknown message received")
   }
-
-  def ready(sessionActor: ActorRef): Receive = {
-    case m => log.info(s"$systemCoordinatorName received a message: $m")
-  }
-
 }

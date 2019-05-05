@@ -1,18 +1,22 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, Props}
+
 
 object ResultCollector {
 
   val resultCollectorName = "resultcollector"
 
-  def props(): Props = Props(new ResultCollector())
+  def props(): Props = Props[ResultCollector]
 
 }
 
 
-class ResultCollector extends Actor with ActorLogging{
+class ResultCollector extends Actor with ActorLogging {
+
   import ResultCollector._
+
+
   override def preStart(): Unit = {
     log.info(s"Starting $resultCollectorName")
     Reaper.watchWithDefault(self)
@@ -25,9 +29,5 @@ class ResultCollector extends Actor with ActorLogging{
     // TODO: extract ODs from OCDs?
     // TODO: write ODs into file
     case _ => log.info("Unknown message received")
-  }
-
-  def ready(sessionActor: ActorRef): Receive = {
-    case m => log.info(s"$resultCollectorName received a message: $m")
   }
 }
