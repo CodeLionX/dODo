@@ -57,9 +57,13 @@ trait TypedColumn[T <: Any]
     override def result(): TypedColumn[T] = internalBuilder.toTypedColumn
 
     override def +=(elem: T): BuilderAdapter.this.type = {
-      if(elem == null)
+      if (elem == null)
         internalBuilder.append(null)
       else
+        /* TODO: unefficient as we convert value to string and parse it afterwards in the builder.
+         * This method is called for all elements if we traverse it (e.g. with `.map` or `.reduce` and `TypedColumn` as
+         * target collection).
+         */
         internalBuilder.append(elem.toString)
       this
     }
