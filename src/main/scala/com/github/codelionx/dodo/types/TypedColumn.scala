@@ -1,5 +1,8 @@
 package com.github.codelionx.dodo.types
 
+import scala.collection.mutable
+import scala.reflect.ClassTag
+
 
 /**
   * Represents a column of a dataset associated with a specific type. The cell data is stored in the correct
@@ -7,7 +10,9 @@ package com.github.codelionx.dodo.types
   *
   * @tparam T the data type
   */
-trait TypedColumn[T <: Any] {
+abstract class TypedColumnBase[T <: Any](implicit ev: ClassTag[T]) {
+
+  protected val tag: ClassTag[T] = ev
 
   /**
     * Returns the [[com.github.codelionx.dodo.types.DataType]] associated with this column.
@@ -15,31 +20,49 @@ trait TypedColumn[T <: Any] {
   def dataType: DataType[T]
 
   /**
-    * Converts this `TypedColumn` to an [[scala.Array]].
+    * Returns the backing array of this `TypedColumn`.
     */
-  def toArray: Array[T]
+  def array: Array[T]
+}
+
+/**
+  * Represents a column of a dataset associated with a specific type that provides a rich interface to manipulate and
+  * access the column's data.
+  *
+  * @tparam T the data type
+  */
+trait TypedColumn[T <: Any]
+  extends TypedColumnBase[T]
+    with TypedColumnArrayLike[T]
+    with TypedColumnSeqLike[T, TypedColumn[T]] {
+
+  override protected def newBuilder: mutable.Builder[T, TypedColumn[T]] = new BuilderAdapter
+
+  override def toString: String =
+    s"""|Column of $dataType:
+        |-------------------------------
+        |${mkString(",")}
+        |""".stripMargin
 
   /**
-    * Returns the element on `i`^th^ position.
-    *
-    * Indices start at `0`; `xs.apply(0)` is the first element of array `xs`.
-    * Note the indexing syntax `xs(i)` is a shorthand for `xs.apply(i)`.
-    *
-    * @param i the index
-    * @return the element at the given index
-    * @throws ArrayIndexOutOfBoundsException if `i < 0` or `length <= i`
+    * Adapter class to bridge between our buffer-based [[com.github.codelionx.dodo.types.TypedColumnBuilder]] and the
+    * [[scala.collection.mutable.Builder]] interface
     */
-  def apply(i: Int): T
+  private final class BuilderAdapter extends mutable.ReusableBuilder[T, TypedColumn[T]] {
 
-  /**
-    * Updates the element at given i.
-    *
-    * Indices start at `0`; `xs.update(i, x)` replaces the i^th^ element in the array.
-    * Note the syntax `xs(i) = x` is a shorthand for `xs.update(i, x)`.
-    *
-    * @param i the index
-    * @param x the value to be written at index `i`
-    * @throws ArrayIndexOutOfBoundsException if `i < 0` or `length <= i`
-    */
-  def update(i: Int, x: T) { throw new Error() }
+    private val internalBuilder = TypedColumnBuilder[T](dataType)(tag)
+
+    override def clear(): Unit = internalBuilder.clear()
+
+    override def result(): TypedColumn[T] = internalBuilder.toTypedColumn
+
+    override def +=(elem: T): BuilderAdapter.this.type = {
+      if(elem == null)
+        internalBuilder.append(null)
+      else
+        internalBuilder.append(elem.toString)
+      this
+    }
+  }
+
 }
