@@ -1,6 +1,8 @@
 package com.github.codelionx.dodo
 
+import akka.actor.PoisonPill
 import akka.cluster.Cluster
+import com.github.codelionx.dodo.actors.{Reaper, SystemCoordinator}
 
 
 object Main {
@@ -27,11 +29,13 @@ object Main {
     cluster.registerOnMemberUp {
       println("Cluster up")
 
-      // shutting down
-      println("nothing to do -- shutting down")
-      // system.terminate()
-      // or
-      cluster.down(cluster.selfAddress)
+      system.actorOf(Reaper.props, Reaper.name)
+      val systemCoordinator = system.actorOf(SystemCoordinator.props(""), SystemCoordinator.name)
+
+      // intentionally stopping systemCoordinator to test reaper functionality
+//      system.stop(systemCoordinator)
+      // or:
+      systemCoordinator ! PoisonPill
     }
   }
 }
