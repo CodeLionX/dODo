@@ -39,6 +39,14 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
     */
   def append(elems: String*): Unit = buffer.append(elems.map(dataType.parse): _*)
 
+  /**
+    * Add a single element to this builder.
+    */
+  def +=(elem: T): TypedColumnBuilder.this.type = {
+    buffer += elem
+    this
+  }
+
   private case class TypedColumnImpl(dataType: DataType[T], array: Array[T]) extends TypedColumn[T]
 
 }
