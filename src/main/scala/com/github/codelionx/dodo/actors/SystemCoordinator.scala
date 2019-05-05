@@ -17,6 +17,7 @@ object SystemCoordinator {
 class SystemCoordinator(dataSource: String) extends Actor with ActorLogging {
 
   import SystemCoordinator._
+  import com.github.codelionx.dodo.types.Implicits._
 
 
   val dataHolder: ActorRef = context.actorOf(DataHolder.props(), DataHolder.name)
@@ -50,7 +51,7 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging {
 
     case DataRef(data) =>
       log.info("... data passing successful:")
-      println(data.map(col => col.dataType + ": " + col.toArray.mkString(", ")).mkString("\n"))
+      println(data.prettyPrint)
 
       log.info("shutting down")
       context.stop(self)

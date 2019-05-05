@@ -44,6 +44,12 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
     override def apply(i: Int): T = arr.apply(i)
 
     override def update(i: Int, x: T): Unit = arr.update(i, x)
+
+    override def toString: String =
+      s"""|Column of $dataType:
+          |-------------------------------
+          |${arr.mkString(",")}
+          |""".stripMargin
   }
 
 }
