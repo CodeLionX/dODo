@@ -7,12 +7,12 @@ import scala.collection.mutable.ArrayBuffer
 
 object Reaper {
 
-  val reaperName = "reaper"
+  val name = "reaper"
 
   def props: Props = Props[Reaper]
 
   def watchWithDefault(actor: ActorRef)(implicit context: ActorContext): Unit = {
-    val reaper = context.system.actorSelection(s"/user/$reaperName")
+    val reaper = context.system.actorSelection(s"/user/$name")
     reaper ! WatchMe(actor)
   }
 

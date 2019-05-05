@@ -5,7 +5,7 @@ import akka.actor.{Actor, ActorLogging, Props}
 
 object DataHolder {
 
-  val dataHolderName = "dataholder"
+  val name = "dataholder"
 
   def props(): Props = Props[DataHolder]
 
@@ -17,12 +17,12 @@ class DataHolder extends Actor with ActorLogging {
 
 
   override def preStart(): Unit = {
-    log.info(s"Starting $dataHolderName")
+    log.info(s"Starting $name")
     Reaper.watchWithDefault(self)
   }
 
   override def postStop(): Unit =
-    log.info(s"Stopping $dataHolderName")
+    log.info(s"Stopping $name")
 
   override def receive: Receive = {
     // TODO: get dataSource -> load data
