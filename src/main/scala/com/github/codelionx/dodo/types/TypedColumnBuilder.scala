@@ -25,6 +25,8 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
 
   private val buffer: ArrayBuffer[T] = ArrayBuffer.empty
 
+  def clear(): Unit = buffer.clear()
+
   /**
     * Returns the [[com.github.codelionx.dodo.types.TypedColumn]] instance with all the parsed cell data.
     */
@@ -37,13 +39,14 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
     */
   def append(elems: String*): Unit = buffer.append(elems.map(dataType.parse): _*)
 
-  private case class TypedColumnImpl(dataType: DataType[T], arr: Array[T]) extends TypedColumn[T] {
-
-    override def toArray: Array[T] = arr
-
-    override def apply(i: Int): T = arr.apply(i)
-
-    override def update(i: Int, x: T): Unit = arr.update(i, x)
+  /**
+    * Add a single element to this builder.
+    */
+  def +=(elem: T): TypedColumnBuilder.this.type = {
+    buffer += elem
+    this
   }
+
+  private case class TypedColumnImpl(dataType: DataType[T], array: Array[T]) extends TypedColumn[T]
 
 }
