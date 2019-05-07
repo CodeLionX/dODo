@@ -43,12 +43,14 @@ object OrderingIndexer {
   }
 
   private def sort(colIndices: Array[(Any, Int)], dataType: DataType[_]): Array[(Any, Int)] = {
-    val data = dataType match {
-      case StringType =>
-        colIndices.asInstanceOf[Array[(String, Int)]].sortBy(_._1)
-      case LongType =>
-        colIndices.asInstanceOf[Array[(Long, Int)]].sortBy(_._1)
-    }
-    data.asInstanceOf[Array[(Any, Int)]]
+//    val data = dataType match {
+//      case StringType =>
+//        colIndices.asInstanceOf[Array[(String, Int)]].sortBy(_._1)
+//      case LongType =>
+//        colIndices.asInstanceOf[Array[(Long, Int)]].sortBy(_._1)
+//    }
+//    data.asInstanceOf[Array[(Any, Int)]]
+    implicit val tOrdering: Ordering[Any] = dataType.ordering.asInstanceOf[Ordering[Any]]
+    colIndices.sorted
   }
 }

@@ -40,6 +40,12 @@ trait TypedColumn[T <: Any]
 
   override protected def newBuilder: mutable.Builder[T, TypedColumn[T]] = new BuilderAdapter
 
+  def sortedWithOwnIndices: Array[(T, Int)] = {
+    implicit val tOrdering: Ordering[T] = dataType.ordering
+    val withIndices = array.zipWithIndex
+    withIndices.sorted
+  }
+
 
   // overrides of [[java.lang.Object]]
 
