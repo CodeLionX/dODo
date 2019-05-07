@@ -44,7 +44,7 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
     */
   def +=(elem: T): TypedColumnBuilder.this.type = {
     buffer += elem
-    this
+    thi
   }
 
   private case class TypedColumnImpl(dataType: DataType[T], array: Array[T]) extends TypedColumn[T]

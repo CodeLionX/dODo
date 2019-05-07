@@ -2,6 +2,7 @@ package com.github.codelionx.dodo
 
 import akka.actor.PoisonPill
 import akka.cluster.Cluster
+import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
 import com.github.codelionx.dodo.actors.{Reaper, SystemCoordinator}
 
 
@@ -30,12 +31,14 @@ object Main {
       println("Cluster up")
 
       system.actorOf(Reaper.props, Reaper.name)
-      val systemCoordinator = system.actorOf(SystemCoordinator.props(""), SystemCoordinator.name)
+      val systemCoordinator = system.actorOf(SystemCoordinator.props("data/iris.csv"), SystemCoordinator.name)
+
+      systemCoordinator ! Initialize
 
       // intentionally stopping systemCoordinator to test reaper functionality
 //      system.stop(systemCoordinator)
       // or:
-      systemCoordinator ! PoisonPill
+//      systemCoordinator ! PoisonPill
     }
   }
 }

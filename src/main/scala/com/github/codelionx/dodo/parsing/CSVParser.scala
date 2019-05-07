@@ -40,15 +40,4 @@ object CSVParser {
     parser.parse(new File(file))
     p.columnarData
   }
-
-  def main(args: Array[String]): Unit = {
-    val data = CSVParser.parse("data/iris.csv")
-    println("Columns:")
-    println(data.map(tcol =>
-      s"""|Column of ${tcol.dataType}:
-          |===============================
-          |${tcol.toArray.mkString(",")}
-          |""".stripMargin
-    ).mkString("\n"))
-  }
 }
