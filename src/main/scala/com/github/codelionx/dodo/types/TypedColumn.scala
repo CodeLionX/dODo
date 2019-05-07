@@ -1,5 +1,7 @@
 package com.github.codelionx.dodo.types
 
+import java.util.Objects
+
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
@@ -37,6 +39,18 @@ trait TypedColumn[T <: Any]
     with TypedColumnSeqLike[T, TypedColumn[T]] {
 
   override protected def newBuilder: mutable.Builder[T, TypedColumn[T]] = new BuilderAdapter
+
+
+  // overrides of [[java.lang.Object]]
+
+  override def hashCode(): Int = Objects.hash(dataType, array.toSeq)
+
+  override def canEqual(o: Any): Boolean = o.isInstanceOf[TypedColumn[T]]
+
+  override def equals(o: Any): Boolean = o match {
+    case o: TypedColumn[T] => o.canEqual(this) && this.hashCode() == o.hashCode()
+    case _ => false
+  }
 
   override def toString: String =
     s"""|Column of $dataType:
