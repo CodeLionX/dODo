@@ -53,8 +53,6 @@ sealed trait DataType[T <: Any] extends Ordered[DataType[_]] {
     */
   def tpe: ClassTag[T]
 
-  def ordering: Ordering[TypedColumn[T]]
-
   /**
     * Parses the `value` to the underlying (primitive) type or uses the default value.
     */
@@ -74,8 +72,6 @@ sealed trait DataType[T <: Any] extends Ordered[DataType[_]] {
 case object LongType extends DataType[Long] {
 
   override val tpe: ClassTag[Long] = ClassTag.Long
-
-  override val ordering: Ordering[TypedColumn[Long]] = Ordering.by(_.array)
 
   /**
     * Checks if the value is a [[scala.Long]] value.

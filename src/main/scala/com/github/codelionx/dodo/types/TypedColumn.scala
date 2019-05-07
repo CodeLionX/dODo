@@ -3,13 +3,6 @@ package com.github.codelionx.dodo.types
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
-object TypedColumn {
-  implicit class OrderedTypedColumn[T](col: TypedColumn[T]) {
-    def ordering: Ordering[TypedColumn[T]] = col.dataType.ordering
-  }
-
-//  implicit def ordering[T, A <: TypedColumn[T]](implicit ev: O)
-}
 
 /**
   * Represents a column of a dataset associated with a specific type. The cell data is stored in the correct
