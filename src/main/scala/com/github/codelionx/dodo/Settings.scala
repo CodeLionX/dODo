@@ -4,19 +4,34 @@ import akka.actor.{ExtendedActorSystem, Extension, ExtensionId, ExtensionIdProvi
 import com.typesafe.config.Config
 
 
-class SettingsImpl(config: Config) extends Extension {
+object Settings extends ExtensionId[Settings] with ExtensionIdProvider {
 
-  private val namespace = "com.github.codelionx.dodo"
+  override def createExtension(system: ExtendedActorSystem): Settings = new Settings(system.settings.config)
 
-  //val linearizationPartitionSize: Int = config.getInt(s"$namespace.linearization-partition-size")
+  override def lookup(): ExtensionId[_ <: Extension] = Settings
+
+  /**
+    * Provides default values as constants
+    */
+  final object DefaultValues {
+
+    final object NodeRole {
+      final val Leader = "leader"
+      final val Follower = "follower"
+    }
+
+    final val HOST = "localhost"
+    final val PORT = 7877
+  }
 
 }
 
 
-object Settings extends ExtensionId[SettingsImpl] with ExtensionIdProvider {
+class Settings(config: Config) extends Extension {
 
-  override def createExtension(system: ExtendedActorSystem): SettingsImpl = new SettingsImpl(system.settings.config)
+  private val namespace = "com.github.codelionx.dodo"
 
-  override def lookup(): ExtensionId[_ <: Extension] = Settings
+  // add config values here
+  //val linearizationPartitionSize: Int = config.getInt(s"$namespace.linearization-partition-size")
 
 }
