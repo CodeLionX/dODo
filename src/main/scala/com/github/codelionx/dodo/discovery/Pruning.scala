@@ -9,6 +9,7 @@ trait Pruning {
     column.dataType == NullType || column.distinct.length == 1
   }
 
+
   def checkOrderEquivalent (col1: TypedColumn[Any], col2: TypedColumn[Any]): Boolean = {
     val indexCol1 = col1.zipWithIndex.toSeq
     val sortedCol1 = indexCol1.sorted(col1.ordering).map(_._2)
