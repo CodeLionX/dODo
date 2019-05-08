@@ -1,7 +1,7 @@
 package com.github.codelionx.dodo
 
-import akka.actor.PoisonPill
 import akka.cluster.Cluster
+import com.github.codelionx.dodo.Settings.DefaultValues
 import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
 import com.github.codelionx.dodo.actors.{Reaper, SystemCoordinator}
 
@@ -11,18 +11,14 @@ object Main {
   val actorSystemName = "dodo-system"
 
   def main(args: Array[String]): Unit = {
-    val masterRole = "master"
-    val slaveRole = "slave"
-    val host = "localhost"
-    val port = 7877
 
     val system = ActorSystem.actorSystem(actorSystemName, ActorSystem.configuration(
       actorSystemName = actorSystemName,
-      actorSystemRole = masterRole,
-      host = host,
-      port = port,
-      masterHost = host,
-      masterPort = port
+      actorSystemRole = DefaultValues.NodeRole.Leader,
+      host = DefaultValues.HOST,
+      port = DefaultValues.PORT,
+      masterHost = DefaultValues.HOST,
+      masterPort = DefaultValues.PORT
     ))
 
     val cluster = Cluster(system)
@@ -36,9 +32,9 @@ object Main {
       systemCoordinator ! Initialize
 
       // intentionally stopping systemCoordinator to test reaper functionality
-//      system.stop(systemCoordinator)
+      //      system.stop(systemCoordinator)
       // or:
-//      systemCoordinator ! PoisonPill
+      //      systemCoordinator ! PoisonPill
     }
   }
 }
