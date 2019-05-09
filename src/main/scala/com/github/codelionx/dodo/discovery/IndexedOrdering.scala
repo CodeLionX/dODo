@@ -6,7 +6,10 @@ import com.github.codelionx.dodo.types.{DataType, TypedColumn}
 object OrderingIndexer {
 
   def orderedIndices(dataset: Array[TypedColumn[_ <: Any]]): Seq[Int] =
-    recSorting(dataset, dataset.head.indices, 0)
+    if (dataset.length == 1)
+      dataset.head.sortedWithOwnIndices.map(_._2)
+    else
+      recSorting(dataset, dataset.head.indices, 0)
 
   private def recSorting(dataset: Array[TypedColumn[_ <: Any]], sortIndices: Seq[Int], colIndex: Int): Seq[Int] = {
     // get new values from dataset of the current slice
