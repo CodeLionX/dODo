@@ -28,7 +28,7 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
   private val broadcastRouter: ActorRef = context.actorOf(BroadcastPool(nWorkers).props(Props[Worker]), "broadcastRouter")
   private var reducedColumns: Set[Int] = Set.empty[Int]
   private var orderEquivalencies: Array[Set[Int]] = Array.empty
-  private var lastTuple = (0, 1)
+  private var lastTuple = (0, 0)
   private var pruningAsked = 0
   private var pruningAnswered = 0
 
@@ -61,12 +61,13 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
   def pruning(table: Array[TypedColumn[Any]]): Receive = {
     case GetTask =>
       lastTuple = getNextTuple(table.size)
-      if (lastTuple._2 < table.size) {
+      if (lastTuple._1 < table.size - 1) {
         sender ! CheckForEquivalency(lastTuple)
+        log.info(s"Worker tasked to check OE: $lastTuple")
         pruningAsked += 1
+      } else {
+        // TODO: Remember to send task once all pruning answers are in and the state has been changed
       }
-      // TODO: else make sure worker asks again once pruning is done
-      self.forward(GetTask)
     case OrderEquivalent(od, isOrderEquiv) =>
       if (isOrderEquiv) {
         reducedColumns -= od._2
@@ -74,7 +75,8 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
         log.info(s"OrderEquivalency found: $od")
       }
       pruningAnswered += 1
-      if (pruningAsked == pruningAnswered) {
+      val pruningDone = (getNextTuple(table.size)._1 == table.size - 1)
+      if (pruningAsked == pruningAnswered && pruningDone) {
         log.info("Pruning done")
         odsToCheck ++= generateFirstCandidates(reducedColumns)
         context.become(findingODs(table))
@@ -112,13 +114,17 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
   def getNextTuple(numColumns: Int): (Int, Int) = {
     var leftCol = lastTuple._1
     var rightCol = lastTuple._2
-    while(!reducedColumns.contains(leftCol) && leftCol < numColumns) {
-      leftCol += 1
-    }
-    if (leftCol > rightCol) { rightCol = leftCol}
+    if (leftCol == numColumns - 1)
+      return lastTuple
     do {
       rightCol += 1
-    } while (!reducedColumns.contains(rightCol) && rightCol < numColumns)
+      rightCol %= numColumns
+      if(rightCol == 0) {
+        leftCol += 1
+        rightCol = leftCol + 1
+      }
+    } while ( leftCol < numColumns - 1 &&
+      !(reducedColumns.contains(rightCol) && reducedColumns.contains(leftCol)))
     (leftCol, rightCol)
   }
 }
