@@ -10,15 +10,8 @@ trait Pruning {
   }
 
   def checkOrderEquivalent (col1: TypedColumn[Any], col2: TypedColumn[Any]): Boolean = {
-//    val indexCol1 = col1.zipWithIndex.toSeq
-//    val sortedCol1 = indexCol1.sorted.map(_._2)
-//
-//    // potential for later optimization
-//    // iterate over col2 instead of sorting
-//    val indexCol2 = col2.zipWithIndex.toSeq
-//    val sortedCol2 = indexCol2.sorted.map(_._2)
-//
-//    sortedCol1.equals(sortedCol2)
-    true
+    val sortedCol1 = col1.sortedIndices
+    val sortedCol2 = col2.sortedIndices
+    sortedCol1 sameElements sortedCol2
   }
 }
