@@ -2,7 +2,6 @@ package com.github.codelionx.dodo.discovery
 
 import com.github.codelionx.dodo.types.{DataType, TypedColumn}
 
-import scala.annotation.tailrec
 import scala.collection.mutable
 
 
@@ -14,7 +13,6 @@ trait IndexedOrdering {
     else
       recSorting(dataset, dataset.head.indices, 0)
 
-//  @tailrec
   private def recSorting(dataset: Array[TypedColumn[_ <: Any]], sortIndices: Seq[Int], colIndex: Int): Seq[Int] = {
     val column = dataset(colIndex)
     val slice = extractIndexedSlice(column, sortIndices)
@@ -24,7 +22,7 @@ trait IndexedOrdering {
       val ranges = constantRanges(sortedSlice)
 
       // sort those constant ranges by next column
-      for(indexRange <- ranges) {
+      for (indexRange <- ranges) {
         val currentView = sortedSlice.view(indexRange.start, indexRange.end).map(_._2)
         val updatedSlice = recSorting(dataset, currentView, colIndex + 1)
         for (j <- updatedSlice.indices) {

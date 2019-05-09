@@ -5,11 +5,18 @@ import com.github.codelionx.dodo.types.{NullType, TypedColumn}
 
 trait Pruning {
 
-  def checkConstant (column: TypedColumn[Any]): Boolean = {
+  /**
+    * Returns `true` if the column is constant (has only one distinct value).
+    */
+  def checkConstant(column: TypedColumn[_ <: Any]): Boolean = {
     column.dataType == NullType || column.distinct.length == 1
   }
 
-  def checkOrderEquivalent (col1: TypedColumn[Any], col2: TypedColumn[Any]): Boolean = {
+  /**
+    * Returns `true` if `col1` and `col2` are order equivalent. Means ordering by `col1` orders `col2` and ordering
+    * by `col2` orders `col1`.
+    */
+  def checkOrderEquivalent(col1: TypedColumn[_ <: Any], col2: TypedColumn[_ <: Any]): Boolean = {
     val sortedCol1 = col1.sortedIndices
     val sortedCol2 = col2.sortedIndices
     sortedCol1 sameElements sortedCol2
