@@ -1,15 +1,10 @@
 package com.github.codelionx.dodo.types
 
+import java.util.Objects
+
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
-object TypedColumn {
-  implicit class OrderedTypedColumn[T](col: TypedColumn[T]) {
-    def ordering: Ordering[TypedColumn[T]] = col.dataType.ordering
-  }
-
-//  implicit def ordering[T, A <: TypedColumn[T]](implicit ev: O)
-}
 
 /**
   * Represents a column of a dataset associated with a specific type. The cell data is stored in the correct
@@ -44,6 +39,24 @@ trait TypedColumn[T <: Any]
     with TypedColumnSeqLike[T, TypedColumn[T]] {
 
   override protected def newBuilder: mutable.Builder[T, TypedColumn[T]] = new BuilderAdapter
+
+  def sortedWithOwnIndices: Array[(T, Int)] = {
+    implicit val tOrdering: Ordering[T] = dataType.ordering
+    val withIndices = array.zipWithIndex
+    withIndices.sorted
+  }
+
+
+  // overrides of [[java.lang.Object]]
+
+  override def hashCode(): Int = Objects.hash(dataType, array.toSeq)
+
+  override def canEqual(o: Any): Boolean = o.isInstanceOf[TypedColumn[T]]
+
+  override def equals(o: Any): Boolean = o match {
+    case o: TypedColumn[T] => o.canEqual(this) && this.hashCode() == o.hashCode()
+    case _ => false
+  }
 
   override def toString: String =
     s"""|Column of $dataType:
