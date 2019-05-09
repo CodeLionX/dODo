@@ -7,8 +7,34 @@ import scala.collection.mutable
 
 trait IndexedOrdering {
 
+  /**
+    * Returns the original indices of the dataset in the order when sorting by the supplied columns lexicographically.
+    */
+  def orderedIndicesOf(dataset: Array[TypedColumn[_ <: Any]], sortingColumns: Seq[Int]): Seq[Int] = {
+    if (sortingColumns.length <= 0 || dataset.length <= 0)
+      Seq.empty
+    else if (sortingColumns.length == 1)
+      dataset(sortingColumns.head).sortedIndices
+    else if (sortingColumns.max >= dataset.length)
+      throw new IllegalArgumentException(
+        "Can not sort by column indices that are greater than the number of columns in the dataset"
+      )
+    else {
+      val bufferView = mutable.Buffer.empty[TypedColumn[_ <: Any]]
+      for (column <- sortingColumns) {
+        bufferView += dataset(column)
+      }
+      recSorting(bufferView.toArray, dataset.head.indices, 0)
+    }
+  }
+
+  /**
+    * Returns the original indices of the dataset in the order when sorting it lexicographically on all columns.
+    */
   def orderedIndices(dataset: Array[TypedColumn[_ <: Any]]): Seq[Int] =
-    if (dataset.length == 1)
+    if (dataset.length <= 0)
+      Seq.empty
+    else if (dataset.length == 1)
       dataset.head.sortedIndices
     else
       recSorting(dataset, dataset.head.indices, 0)
