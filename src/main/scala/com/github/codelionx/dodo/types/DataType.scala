@@ -76,12 +76,14 @@ sealed trait DataType[T <: Any] extends Ordered[DataType[_]] {
     * }
     * }}}
     */
-  val tpe: ClassTag[T]
+  def tpe: ClassTag[T]
 
   /**
     * Parses the `value` to the underlying (primitive) type or uses the default value.
     */
   def parse(value: String): T
+
+  def ordering: Ordering[T]
 
   /**
     * Creates a [[com.github.codelionx.dodo.types.TypedColumnBuilder]] that can be used to create a column of this type.
@@ -193,6 +195,8 @@ final case class ZonedDateType(format: DateTimeFormatter) extends DataType[Zoned
 
   override val tpe: ClassTag[ZonedDateTime] = ClassTag(classOf[ZonedDateTime])
 
+  override val ordering: Ordering[ZonedDateTime] = Ordering.by(_.toEpochSecond)
+
   def parse(value: String): ZonedDateTime = Try {
     format.parse[ZonedDateTime](value, (temp: TemporalAccessor) => ZonedDateTime.from(temp))
   }.getOrElse(ZonedDateTime.ofInstant(Instant.EPOCH, ZoneId.systemDefault()))
@@ -207,6 +211,8 @@ final case class LocalDateType(format: DateTimeFormatter) extends DataType[Local
 
   override val tpe: ClassTag[LocalDateTime] = ClassTag(classOf[LocalDateTime])
 
+  override val ordering: Ordering[LocalDateTime] = Ordering.by(_.toEpochSecond(ZoneOffset.UTC))
+
   override def parse(value: String): LocalDateTime = Try {
     format.parse[LocalDateTime](value, (temp: TemporalAccessor) => LocalDateTime.from(temp))
   }.getOrElse(LocalDateTime.ofInstant(Instant.EPOCH, ZoneId.systemDefault()))
@@ -220,6 +226,8 @@ final case class LocalDateType(format: DateTimeFormatter) extends DataType[Local
 case object LongType extends DataType[Long] {
 
   override val tpe: ClassTag[Long] = ClassTag.Long
+
+  override val ordering: Ordering[Long] = Ordering[Long]
 
   /**
     * Checks if the value is a [[scala.Long]] value.
@@ -245,6 +253,8 @@ case object DoubleType extends DataType[Double] {
 
   override val tpe: ClassTag[Double] = ClassTag.Double
 
+  override val ordering: Ordering[Double] = Ordering[Double]
+
   /**
     * Checks if the value is a [[scala.Double]] value.
     */
@@ -269,6 +279,8 @@ case object StringType extends DataType[String] {
 
   override val tpe: ClassTag[String] = ClassTag(classOf[String])
 
+  override val ordering: Ordering[String] = Ordering[String]
+
   override def parse(value: String): String = value
 
   override def createTypedColumnBuilder: TypedColumnBuilder[String] = TypedColumnBuilder(this)
@@ -280,6 +292,8 @@ case object StringType extends DataType[String] {
 case object NullType extends DataType[Null] {
 
   override val tpe: ClassTag[Null] = ClassTag.Null
+
+  override val ordering: Ordering[Null] = (_: Any, _: Any) => 0
 
   /**
     * Checks if the value is a `null` value.

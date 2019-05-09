@@ -36,7 +36,8 @@ abstract class TypedColumnBase[T <: Any](implicit ev: ClassTag[T]) {
 trait TypedColumn[T <: Any]
   extends TypedColumnBase[T]
     with TypedColumnArrayLike[T]
-    with TypedColumnSeqLike[T, TypedColumn[T]] {
+    with TypedColumnSeqLike[T, TypedColumn[T]]
+    with TypedColumnSorting[T, TypedColumn[T]] {
 
   override protected def newBuilder: mutable.Builder[T, TypedColumn[T]] = new BuilderAdapter
 

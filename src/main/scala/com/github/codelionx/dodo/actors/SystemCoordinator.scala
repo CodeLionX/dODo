@@ -2,6 +2,7 @@ package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.actors.DataHolder.{DataRef, GetDataRef, LoadData}
+import com.github.codelionx.dodo.discovery.Pruning
 
 
 object SystemCoordinator {
@@ -14,7 +15,7 @@ object SystemCoordinator {
 
 }
 
-class SystemCoordinator(dataSource: String) extends Actor with ActorLogging {
+class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with Pruning {
 
   import SystemCoordinator._
   import com.github.codelionx.dodo.types.Implicits._
@@ -52,6 +53,15 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging {
     case DataRef(data) =>
       log.info("... data passing successful:")
       println(data.prettyPrint)
+
+      for (column <- data) {
+        if (checkConstant(column))
+          log.info(s"found const column: ${data.indexOf(column)}")
+        for (col2 <- data) {
+          if (checkOrderEquivalent(column, col2))
+            log.info(s"Found Order Equivalence: ${data.indexOf(column)} <-> ${data.indexOf(col2)}")
+        }
+      }
 
       log.info("shutting down")
       context.stop(self)
