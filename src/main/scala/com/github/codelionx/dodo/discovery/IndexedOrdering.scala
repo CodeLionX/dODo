@@ -62,6 +62,9 @@ trait IndexedOrdering {
 
   @inline
   private def extractIndexedSlice(column: TypedColumn[_ <: Any], sortIndices: Seq[Int]): Array[(Any, Int)] = {
+    if (column.length == sortIndices.length)
+      return column.zipWithIndex.toArray
+
     val indexedSlice = Array.ofDim[(Any, Int)](sortIndices.length)
     for (i <- sortIndices.indices) {
       val index = sortIndices(i)
@@ -82,7 +85,7 @@ trait IndexedOrdering {
     val ranges = mutable.Buffer.empty[Range]
     var start = 0
     for (i <- 1 until sortedSlice.length) {
-      if (!sortedSlice(start)._1.equals(sortedSlice(i)._1)) {
+      if (!(sortedSlice(start)._1 equals sortedSlice(i)._1)) {
         if (start != i - 1) {
           ranges += start until i
         }

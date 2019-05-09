@@ -15,6 +15,9 @@ trait TypedColumnSorting[T, +Repr] {
     withIndices.sorted
   }
 
+  /**
+    * Sorts this column by the ordering defined in the data type but just returns the sorted indices.
+    */
   def sortedIndices: Array[Int] = {
     sortedWithOwnIndices.map(_._2)
   }
