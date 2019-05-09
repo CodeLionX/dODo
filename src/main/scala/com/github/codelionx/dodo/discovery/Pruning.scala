@@ -20,6 +20,11 @@ trait Pruning {
 //    val sortedCol2 = indexCol2.sorted.map(_._2)
 //
 //    sortedCol1.equals(sortedCol2)
+    false
+  }
+
+
+  def checkOrderDependent (od: (List[Int], List[Int]), table: Array[TypedColumn[Any]]): Boolean = {
     true
   }
 }

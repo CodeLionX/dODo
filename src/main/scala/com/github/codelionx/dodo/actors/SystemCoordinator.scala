@@ -2,6 +2,7 @@ package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.actors.DataHolder.{DataLoaded, DataRef, GetDataRef, LoadData}
+import com.github.codelionx.dodo.actors.ODMaster.FindODs
 import com.github.codelionx.dodo.discovery.Pruning
 
 
@@ -21,8 +22,9 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with
   import com.github.codelionx.dodo.types.Implicits._
 
 
+  val nWorkers = 1
   val dataHolder: ActorRef = context.actorOf(DataHolder.props(), DataHolder.name)
-  val odMaster: ActorRef = context.actorOf(ODMaster.props(), ODMaster.name)
+  val odMaster: ActorRef = context.actorOf(ODMaster.props(nWorkers), ODMaster.name)
 
 
   override def preStart(): Unit = {
@@ -48,14 +50,14 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with
       dataHolder ! GetDataRef
 
     case DataLoaded =>
-      odMaster ! dataHolder
+      odMaster ! FindODs(dataHolder)
 
     case DataRef(data) =>
       log.info("... data passing successful:")
       println(data.prettyPrint)
 
-      log.info("shutting down")
-      context.stop(self)
+      //log.info("shutting down")
+      //context.stop(self)
     // ---
 
     // TODO
