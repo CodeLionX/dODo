@@ -50,6 +50,10 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
     case FindODs(dataHolder) =>
       dataHolder ! GetDataRef
     case DataRef(table) =>
+      if (table.size <= 1) {
+        log.info("No order dependencies due to size of table")
+        context.stop(self)
+      }
       orderEquivalencies = Array.fill(table.size){Set.empty[Int]}
       reducedColumns = (0 to table.size - 1).toSet
       context.become(pruning(table))
