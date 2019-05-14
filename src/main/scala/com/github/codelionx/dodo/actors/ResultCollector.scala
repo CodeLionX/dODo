@@ -13,7 +13,7 @@ object ResultCollector {
 
   case class ConstColumns(ccs: Seq[Int])
 
-  case class OrderEquivalencies(oe: Array[Seq[Int]])
+  case class OrderEquivalencies(oe: Map[Int, Seq[Int]])
 
   case class OD(od: (Seq[Int], Seq[Int]))
 }
@@ -23,7 +23,7 @@ class ResultCollector(filename: String) extends Actor with ActorLogging {
 
   import ResultCollector._
 
-  private var orderEquivalencies : Array[Seq[Int]] = Array.empty
+  private var orderEquivalencies : Map[Int, Seq[Int]] = Map.empty
   // FileWriter
   val file = new File(filename)
   val bw = new BufferedWriter(new FileWriter(file))

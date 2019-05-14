@@ -2,7 +2,11 @@ package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
+
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
+
+import com.github.codelionx.dodo.actors.ResultCollector.OD
+
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.collection.immutable.Queue
@@ -57,22 +61,22 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       sender ! GetTask
 
     case CheckForOD(odCandidate, reducedColumns) =>
-      if (checkOrderDependent(
-        (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1),
-        table.asInstanceOf[Array[TypedColumn[_]]])
+      val ocdCandidate = (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1)
+      if (checkOrderDependent(ocdCandidate, table.asInstanceOf[Array[TypedColumn[_]]])
       ) {
-        // TODO: send OD to resultCollector
+        resultCollector ! OD(ocdCandidate)
+
         var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
         if (checkOrderDependent(odCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
           log.info(s"Found OD: $odCandidate")
-          // TODO: Send to ResultCollector
+          resultCollector ! OD(odCandidate)
         } else {
           newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
         }
         val mirroredOD = (odCandidate._2, odCandidate._1)
         if (checkOrderDependent(mirroredOD, table.asInstanceOf[Array[TypedColumn[_]]])) {
           log.info(s"Found OD: $mirroredOD")
-          // TODO: Send to ResultCollector
+          resultCollector ! OD(mirroredOD)
         } else {
           newCandidates ++= generateODCandidates(reducedColumns, mirroredOD)
         }

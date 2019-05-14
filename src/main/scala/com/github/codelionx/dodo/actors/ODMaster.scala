@@ -2,6 +2,7 @@ package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.actors.DataHolder.{DataRef, GetDataRef}
+import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
 import com.github.codelionx.dodo.actors.Worker.{CheckForEquivalency, CheckForOD, GetTask, ODsToCheck, OrderEquivalent}
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
@@ -51,25 +52,26 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef) extends Actor with Acto
         log.info("No order dependencies due to length of table")
         context.stop(self)
       }
-      val orderEquivalencies = Array.fill(table.length){Set.empty[Int]}
+      val orderEquivalencies = Array.fill(table.length){Seq.empty[Int]}
       val columnIndexTuples = table.indices.combinations(2).map(l => l.head -> l(1))
 
       reducedColumns = table.indices.toSet
-      pruneConstColumns(table)
+      val constColumns = pruneConstColumns(table)
+      resultCollector ! ConstColumns(constColumns)
       workers.foreach(actor => actor ! DataRef(table))
       context.become(pruning(table, orderEquivalencies, columnIndexTuples))
 
     case _ => log.info("Unknown message received")
   }
 
-  def pruning(table: Array[TypedColumn[Any]], orderEquivalencies: Array[Set[Int]], columnIndexTuples: Iterator[(Int, Int)]): Receive = {
+  def pruning(table: Array[TypedColumn[Any]], orderEquivalencies: Array[Seq[Int]], columnIndexTuples: Iterator[(Int, Int)]): Receive = {
     case GetTask =>
       if(columnIndexTuples.isEmpty) {
         // TODO: Remember to send task once all pruning answers are in and the state has been changed
       }
       else {
         var nextTuple = columnIndexTuples.next()
-        while (!(reducedColumns.contains(nextTuple._1) && reducedColumns.contains(nextTuple._2)) && !columnIndexTuples.isEmpty) {
+        while (!(reducedColumns.contains(nextTuple._1) && reducedColumns.contains(nextTuple._2)) && columnIndexTuples.nonEmpty) {
           nextTuple = columnIndexTuples.next()
         }
         sender ! CheckForEquivalency(nextTuple)
@@ -79,12 +81,15 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef) extends Actor with Acto
     case OrderEquivalent(od, isOrderEquiv) =>
       if (isOrderEquiv) {
         reducedColumns -= od._2
-        orderEquivalencies(od._1) += od._2
+        orderEquivalencies(od._1) :+= od._2
         log.info(s"OrderEquivalency found: $od")
       }
       pendingPruningResponses -= 1
       if (pendingPruningResponses == 0 && columnIndexTuples.isEmpty) {
         log.info("Pruning done")
+        var equivalenceClasses: Map[Int, Seq[Int]] = Map.empty
+        reducedColumns.foreach(ind => equivalenceClasses += (ind -> orderEquivalencies(ind)))
+        resultCollector ! OrderEquivalencies(equivalenceClasses)
         odsToCheck ++= generateFirstCandidates(reducedColumns)
         context.become(findingODs(table))
       }
@@ -110,12 +115,15 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef) extends Actor with Acto
     case _ => log.info("Unknown message received")
   }
 
-  def pruneConstColumns(table: Array[TypedColumn[Any]]): Unit = {
+  def pruneConstColumns(table: Array[TypedColumn[Any]]): Seq[Int] = {
+    var constColumns: Seq[Int] = Seq.empty
     for (column <- table) {
       if (checkConstant(column)) {
         log.info(s"found const column: ${table.indexOf(column)}")
         reducedColumns -= table.indexOf(column)
+        constColumns = constColumns :+ table.indexOf(column)
       }
     }
+    constColumns
   }
 }
