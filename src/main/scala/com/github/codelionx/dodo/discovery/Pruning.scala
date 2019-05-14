@@ -22,6 +22,12 @@ trait Pruning extends IndexedOrdering {
     sortedCol1 sameElements sortedCol2
   }
 
+  /**
+    * Checks if the left-hand-side list of attributes of the `od` sorts the right-hand-side list of attributes for the
+    * supplied `table`.
+    *
+    * @return `true` if the order dependency holds, `false` otherwise
+    */
   def checkOrderDependent(od: (Seq[Int], Seq[Int]), table: Array[TypedColumn[_ <: Any]]): Boolean = {
     val (x, y) = od
     val index = orderedIndicesOf(table, x)
