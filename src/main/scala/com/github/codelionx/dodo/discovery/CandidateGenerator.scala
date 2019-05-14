@@ -13,7 +13,7 @@ trait CandidateGenerator {
   }
 
   def generateODCandidates(columns: Set[Int], od: (Seq[Int], Seq[Int])): Queue[(Seq[Int], Seq[Int])] = {
-    val aPlus = columns -- od._1.toSet -- od._2.toSet
+    val aPlus = (columns -- od._1.toSet) -- od._2.toSet
     val newCandidates = aPlus.map(col => (od._1 :+ col, od._2))
     Queue(newCandidates.toList: _*)
   }

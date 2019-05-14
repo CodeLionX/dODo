@@ -56,21 +56,26 @@ class Worker extends Actor with ActorLogging with Pruning with CandidateGenerato
       sender ! OrderEquivalent(oeToCheck, checkOrderEquivalent(table(oeToCheck._1), table(oeToCheck._2)))
       sender ! GetTask
     case CheckForOD(odCandidate, reducedColumns) =>
-      var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
-      if (checkOrderDependent(odCandidate, table)) {
-        log.info(s"Found OD: $odCandidate")
-        // TODO: Send to ResultCollector
+      if (checkOrderDependent((odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1), table)) {
+        // TODO: send OD to resultCollector
+        var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
+        if (checkOrderDependent(odCandidate, table)) {
+          log.info(s"Found OD: $odCandidate")
+          // TODO: Send to ResultCollector
+        } else {
+          newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
+        }
+        val mirroredOD = (odCandidate._2, odCandidate._1)
+        if(checkOrderDependent(mirroredOD, table)) {
+          log.info(s"Found OD: $mirroredOD")
+          // TODO: Send to ResultCollector
+        } else {
+          newCandidates ++= generateODCandidates(reducedColumns, mirroredOD)
+        }
+        sender ! ODsToCheck(odCandidate, newCandidates)
       } else {
-        newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
+        sender ! ODsToCheck(odCandidate, Queue.empty)
       }
-      val mirroredOD = (odCandidate._2, odCandidate._1)
-      if(checkOrderDependent(mirroredOD, table)) {
-        log.info(s"Found OD: $mirroredOD")
-        // TODO: Send to ResultCollector
-      } else {
-        newCandidates ++= generateODCandidates(reducedColumns, mirroredOD)
-      }
-      sender ! ODsToCheck(odCandidate, newCandidates)
       sender ! GetTask
 
     case _ => log.info("Unknown message received")

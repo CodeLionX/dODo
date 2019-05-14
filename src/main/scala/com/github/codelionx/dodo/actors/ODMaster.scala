@@ -67,7 +67,7 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
       }
       else {
         var nextTuple = columnIndexTuples.next()
-        while ((reducedColumns.contains(nextTuple._1) || reducedColumns.contains(nextTuple._2)) && !columnIndexTuples.isEmpty) {
+        while (!(reducedColumns.contains(nextTuple._1) && reducedColumns.contains(nextTuple._2)) && !columnIndexTuples.isEmpty) {
           nextTuple = columnIndexTuples.next()
         }
         sender ! CheckForEquivalency(nextTuple)
@@ -94,7 +94,6 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
       if (odsToCheck.nonEmpty) {
         val (odToCheck, newQueue) = odsToCheck.dequeue
         odsToCheck = newQueue
-        if (checkOrderDependent((odToCheck._1 ++ odToCheck._2, odToCheck._2 ++ odToCheck._1), table))
         log.info(s"Worker tasked to check OD: $odToCheck")
         sender ! CheckForOD(odToCheck, reducedColumns)
         waitingForODStatus += odToCheck
