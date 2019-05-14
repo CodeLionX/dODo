@@ -46,14 +46,14 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
     case FindODs(dataHolder) =>
       dataHolder ! GetDataRef
     case DataRef(table) =>
-      if (table.size <= 1) {
-        log.info("No order dependencies due to size of table")
+      if (table.length <= 1) {
+        log.info("No order dependencies due to length of table")
         context.stop(self)
       }
-      val orderEquivalencies = Array.fill(table.size){Set.empty[Int]}
+      val orderEquivalencies = Array.fill(table.length){Set.empty[Int]}
       val columnIndexTuples = table.indices.combinations(2).map(l => l.head -> l(1))
 
-      reducedColumns = (0 to table.size - 1).toSet
+      reducedColumns = table.indices.toSet
       pruneConstColumns(table)
       workers.foreach(actor => actor ! DataRef(table))
       context.become(pruning(table, orderEquivalencies, columnIndexTuples))
@@ -109,7 +109,7 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
     case _ => log.info("Unknown message received")
   }
 
-  def pruneConstColumns(table: Array[TypedColumn[Any]]) = {
+  def pruneConstColumns(table: Array[TypedColumn[Any]]): Unit = {
     for (column <- table) {
       if (checkConstant(column)) {
         log.info(s"found const column: ${table.indexOf(column)}")
