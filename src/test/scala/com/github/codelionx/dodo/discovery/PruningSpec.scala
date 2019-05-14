@@ -68,5 +68,33 @@ class PruningSpec extends WordSpec with Matchers {
       PruningTester.checkOrderEquivalent(col1, col3) shouldEqual false
       PruningTester.checkOrderEquivalent(col1, col4) shouldEqual false
     }
+
+    "check for order dependencies of lists with only one element" in {
+      val dataset: Array[TypedColumn[_ <: Any]] = Array(
+        TypedColumnBuilder.from("C", "A", "C", "Z", "C"),
+        TypedColumnBuilder.from(1.1, 0.2, 3.01, 23.1, 2.24),
+        TypedColumnBuilder.from(80L, 20L, 105L, 294L, 102L)
+      )
+
+      PruningTester.checkOrderDependent(Seq(0) -> Seq(1), dataset) shouldEqual false
+      PruningTester.checkOrderDependent(Seq(1) -> Seq(0), dataset) shouldEqual true
+      PruningTester.checkOrderDependent(Seq(0) -> Seq(2), dataset) shouldEqual false
+      PruningTester.checkOrderDependent(Seq(1) -> Seq(2), dataset) shouldEqual true
+      PruningTester.checkOrderDependent(Seq(2) -> Seq(1), dataset) shouldEqual true
+    }
+
+    "check for order dependencies of longer lists" in {
+      val dataset: Array[TypedColumn[_ <: Any]] = Array(
+        TypedColumnBuilder.from("C", "A", "C", "Z", "C"),
+        TypedColumnBuilder.from(1.1, 0.2, 1.3, 23.1, 1.2),
+        TypedColumnBuilder.from(80L, 20L, 105L, 294L, 102L)
+      )
+      PruningTester.checkOrderDependent(Seq(0) -> Seq(2), dataset) shouldEqual false
+      PruningTester.checkOrderDependent(Seq(0) -> Seq(1), dataset) shouldEqual false
+      PruningTester.checkOrderDependent(Seq(1) -> Seq(2), dataset) shouldEqual true
+      PruningTester.checkOrderDependent(Seq(0, 1) -> Seq(2), dataset) shouldEqual true
+      PruningTester.checkOrderDependent(Seq(2) -> Seq(0, 1), dataset) shouldEqual true
+    }
+
   }
 }
