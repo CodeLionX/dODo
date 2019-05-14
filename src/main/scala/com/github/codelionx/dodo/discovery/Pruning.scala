@@ -3,7 +3,7 @@ package com.github.codelionx.dodo.discovery
 import com.github.codelionx.dodo.types.{NullType, TypedColumn}
 
 
-trait Pruning {
+trait Pruning extends IndexedOrdering {
 
   /**
     * Returns `true` if the column is constant (has only one distinct value).
@@ -22,7 +22,29 @@ trait Pruning {
     sortedCol1 sameElements sortedCol2
   }
 
-  def checkOrderDependent (od: (Seq[Int], Seq[Int]), table: Array[TypedColumn[Any]]): Boolean = {
+  def checkOrderDependent(od: (Seq[Int], Seq[Int]), table: Array[TypedColumn[_ <: Any]]): Boolean = {
+    val (x, y) = od
+    val index = orderedIndicesOf(table, x)
+
+    for (i <- 0 to index.length - 2) {
+      for (colIndex <- y) {
+        if (!checkOrdering(index(i), index(i + 1), table(colIndex))) {
+          return false
+        }
+      }
+    }
     true
+  }
+
+  private def checkOrdering(index1: Int, index2: Int, col: TypedColumn[_ <: Any]): Boolean = {
+    val ordering = col.dataType.ordering.asInstanceOf[Ordering[Any]]
+
+    val value1 = col(index1)
+    val value2 = col(index2)
+
+    if (ordering.lteq(value1, value2))
+      true
+    else
+      false
   }
 }
