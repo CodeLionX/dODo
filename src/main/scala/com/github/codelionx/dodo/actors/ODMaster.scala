@@ -14,17 +14,17 @@ object ODMaster {
 
   val name = "odmaster"
 
-  def props(nWorkers: Int): Props = Props(new ODMaster(nWorkers))
+  def props(nWorkers: Int, resultCollector: ActorRef): Props = Props(new ODMaster(nWorkers, resultCollector))
 
   case class FindODs(dataHolder: ActorRef)
 
 }
 
 
-class ODMaster(nWorkers: Int) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
+class ODMaster(nWorkers: Int, resultCollector: ActorRef) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
 
   import ODMaster._
-  private val workers: Seq[ActorRef] = Seq.fill(nWorkers){context.actorOf(Worker.props(), Worker.name)}
+  private val workers: Seq[ActorRef] = Seq.fill(nWorkers){context.actorOf(Worker.props(resultCollector), Worker.name)}
   private var reducedColumns: Set[Int] = Set.empty
   private var pendingPruningResponses = 0
 

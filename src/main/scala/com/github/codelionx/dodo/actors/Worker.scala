@@ -12,7 +12,7 @@ object Worker {
 
   val name = "worker"
 
-  def props(): Props = Props[Worker]
+  def props(resultCollector: ActorRef): Props = Props(new Worker(resultCollector))
 
   case object GetTask
 
@@ -29,7 +29,7 @@ object Worker {
 }
 
 
-class Worker extends Actor with ActorLogging with DependencyChecking with CandidateGenerator{
+class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator{
 
   import Worker._
 
