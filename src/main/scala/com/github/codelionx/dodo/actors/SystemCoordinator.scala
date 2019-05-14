@@ -3,7 +3,7 @@ package com.github.codelionx.dodo.actors
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.actors.DataHolder.{DataLoaded, DataRef, GetDataRef, LoadData}
 import com.github.codelionx.dodo.actors.ODMaster.FindODs
-import com.github.codelionx.dodo.discovery.Pruning
+import com.github.codelionx.dodo.discovery.DependencyChecking
 
 
 object SystemCoordinator {
@@ -16,7 +16,7 @@ object SystemCoordinator {
 
 }
 
-class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with Pruning {
+class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with DependencyChecking {
 
   import SystemCoordinator._
   import com.github.codelionx.dodo.types.Implicits._
@@ -41,20 +41,22 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with
       log.info("  Loading and parsing data")
       dataHolder ! LoadData(dataSource)
 
-      log.info("  Creating initial search space")
-      log.info("  ...")
+//      log.info("  Creating initial search space")
+//      log.info("  ...")
 
       // test if data passing works
       // ---
-      log.info("Testing data passing ...")
-      dataHolder ! GetDataRef
+//      log.info("Testing data passing ...")
+//      dataHolder ! GetDataRef
 
     case DataLoaded =>
+      log.info("  Starting master and passing ref to data holder")
+      log.info(s"Session is in the hand of ${ODMaster.name}")
       odMaster ! FindODs(dataHolder)
 
-    case DataRef(data) =>
-      log.info("... data passing successful:")
-      println(data.prettyPrint)
+//    case DataRef(data) =>
+//      log.info("... data passing successful:")
+//      println(data.prettyPrint)
 
       //log.info("shutting down")
       //context.stop(self)

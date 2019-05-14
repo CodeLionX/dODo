@@ -3,7 +3,7 @@ package com.github.codelionx.dodo.discovery
 import com.github.codelionx.dodo.types.{NullType, TypedColumn}
 
 
-trait Pruning extends IndexedOrdering {
+trait DependencyChecking extends IndexedOrdering {
 
   /**
     * Returns `true` if the column is constant (has only one distinct value).

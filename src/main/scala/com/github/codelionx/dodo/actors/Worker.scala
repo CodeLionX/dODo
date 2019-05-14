@@ -2,7 +2,7 @@ package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
-import com.github.codelionx.dodo.discovery.{CandidateGenerator, Pruning}
+import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.collection.immutable.Queue
@@ -29,7 +29,7 @@ object Worker {
 }
 
 
-class Worker extends Actor with ActorLogging with Pruning with CandidateGenerator {
+class Worker extends Actor with ActorLogging with DependencyChecking with CandidateGenerator{
 
   import Worker._
 
@@ -55,6 +55,7 @@ class Worker extends Actor with ActorLogging with Pruning with CandidateGenerato
     case CheckForEquivalency(oeToCheck) =>
       sender ! OrderEquivalent(oeToCheck, checkOrderEquivalent(table(oeToCheck._1), table(oeToCheck._2)))
       sender ! GetTask
+
     case CheckForOD(odCandidate, reducedColumns) =>
       if (checkOrderDependent(
         (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1),

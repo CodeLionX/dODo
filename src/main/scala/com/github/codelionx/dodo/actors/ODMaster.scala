@@ -3,7 +3,7 @@ package com.github.codelionx.dodo.actors
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.actors.DataHolder.{DataRef, GetDataRef}
 import com.github.codelionx.dodo.actors.Worker.{CheckForEquivalency, CheckForOD, GetTask, ODsToCheck, OrderEquivalent}
-import com.github.codelionx.dodo.discovery.{CandidateGenerator, Pruning}
+import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.collection.immutable.Queue
@@ -21,7 +21,7 @@ object ODMaster {
 }
 
 
-class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with CandidateGenerator {
+class ODMaster(nWorkers: Int) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
 
   import ODMaster._
   private val workers: Seq[ActorRef] = Seq.fill(nWorkers){context.actorOf(Worker.props(), Worker.name)}
@@ -45,6 +45,7 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
   def uninitialized: Receive = {
     case FindODs(dataHolder) =>
       dataHolder ! GetDataRef
+
     case DataRef(table) =>
       if (table.length <= 1) {
         log.info("No order dependencies due to length of table")
@@ -57,6 +58,7 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
       pruneConstColumns(table)
       workers.foreach(actor => actor ! DataRef(table))
       context.become(pruning(table, orderEquivalencies, columnIndexTuples))
+
     case _ => log.info("Unknown message received")
   }
 

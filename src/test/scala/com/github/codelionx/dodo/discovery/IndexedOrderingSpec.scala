@@ -35,5 +35,6 @@ class IndexedOrderingSpec extends WordSpec with Matchers {
       )
       IndexedOrderingTester.orderedIndicesOf(dataset, Seq(1, 3)) shouldEqual Seq(2, 4, 0, 1, 3)
     }
+
   }
 }
