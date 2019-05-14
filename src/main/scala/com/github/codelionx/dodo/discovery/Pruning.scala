@@ -22,7 +22,7 @@ trait Pruning {
     sortedCol1 sameElements sortedCol2
   }
 
-  def checkOrderDependent (od: (List[Int], List[Int]), table: Array[TypedColumn[Any]]): Boolean = {
+  def checkOrderDependent (od: (Seq[Int], Seq[Int]), table: Array[TypedColumn[Any]]): Boolean = {
     true
   }
 }

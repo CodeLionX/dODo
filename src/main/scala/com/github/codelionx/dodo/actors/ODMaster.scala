@@ -1,13 +1,12 @@
 package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
-import akka.routing.BroadcastPool
 import com.github.codelionx.dodo.actors.DataHolder.{DataRef, GetDataRef}
 import com.github.codelionx.dodo.actors.Worker.{CheckForEquivalency, CheckForOD, GetTask, ODsToCheck, OrderEquivalent}
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, Pruning}
 import com.github.codelionx.dodo.types.TypedColumn
 
-import scala.collection.mutable
+import scala.collection.immutable.Queue
 import scala.language.postfixOps
 
 
@@ -25,15 +24,12 @@ object ODMaster {
 class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with CandidateGenerator {
 
   import ODMaster._
-  private val broadcastRouter: ActorRef = context.actorOf(BroadcastPool(nWorkers).props(Props[Worker]), "broadcastRouter")
-  private var reducedColumns: Set[Int] = Set.empty[Int]
-  private var orderEquivalencies: Array[Set[Int]] = Array.empty
-  private var lastTuple = (0, 0)
-  private var pruningAsked = 0
-  private var pruningAnswered = 0
+  private val workers: Seq[ActorRef] = Seq.fill(nWorkers){context.actorOf(Worker.props(), Worker.name)}
+  private var reducedColumns: Set[Int] = Set.empty
+  private var pendingPruningResponses = 0
 
-  private val odsToCheck: mutable.Queue[(List[Int], List[Int])] = mutable.Queue.empty[(List[Int], List[Int])]
-  private var waitingForODStatus: Set[(List[Int], List[Int])] = Set.empty[(List[Int], List[Int])]
+  private var odsToCheck: Queue[(Seq[Int], Seq[Int])] = Queue.empty
+  private var waitingForODStatus: Set[(Seq[Int], Seq[Int])] = Set.empty
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")
@@ -54,23 +50,29 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
         log.info("No order dependencies due to size of table")
         context.stop(self)
       }
-      orderEquivalencies = Array.fill(table.size){Set.empty[Int]}
+      val orderEquivalencies = Array.fill(table.size){Set.empty[Int]}
+      val columnIndexTuples = table.indices.combinations(2).map(l => l.head -> l(1))
+
       reducedColumns = (0 to table.size - 1).toSet
-      context.become(pruning(table))
-      broadcastRouter ! DataRef(table)
       pruneConstColumns(table)
+      workers.foreach(actor => actor ! DataRef(table))
+      context.become(pruning(table, orderEquivalencies, columnIndexTuples))
     case _ => log.info("Unknown message received")
   }
 
-  def pruning(table: Array[TypedColumn[Any]]): Receive = {
+  def pruning(table: Array[TypedColumn[Any]], orderEquivalencies: Array[Set[Int]], columnIndexTuples: Iterator[(Int, Int)]): Receive = {
     case GetTask =>
-      lastTuple = getNextTuple(table.size)
-      if (lastTuple._1 < table.size - 1) {
-        sender ! CheckForEquivalency(lastTuple)
-        log.info(s"Worker tasked to check OE: $lastTuple")
-        pruningAsked += 1
-      } else {
+      if(columnIndexTuples.isEmpty) {
         // TODO: Remember to send task once all pruning answers are in and the state has been changed
+      }
+      else {
+        var nextTuple = columnIndexTuples.next()
+        while ((reducedColumns.contains(nextTuple._1) || reducedColumns.contains(nextTuple._2)) && !columnIndexTuples.isEmpty) {
+          nextTuple = columnIndexTuples.next()
+        }
+        sender ! CheckForEquivalency(nextTuple)
+        log.info(s"Worker tasked to check OE: $nextTuple")
+        pendingPruningResponses += 1
       }
     case OrderEquivalent(od, isOrderEquiv) =>
       if (isOrderEquiv) {
@@ -78,9 +80,8 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
         orderEquivalencies(od._1) += od._2
         log.info(s"OrderEquivalency found: $od")
       }
-      pruningAnswered += 1
-      val pruningDone = (getNextTuple(table.size)._1 == table.size - 1)
-      if (pruningAsked == pruningAnswered && pruningDone) {
+      pendingPruningResponses -= 1
+      if (pendingPruningResponses == 0 && columnIndexTuples.isEmpty) {
         log.info("Pruning done")
         odsToCheck ++= generateFirstCandidates(reducedColumns)
         context.become(findingODs(table))
@@ -90,8 +91,10 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
 
   def findingODs(table: Array[TypedColumn[Any]]): Receive = {
     case GetTask =>
-      if (!odsToCheck.isEmpty) {
-        val odToCheck = odsToCheck.dequeue()
+      if (odsToCheck.nonEmpty) {
+        val (odToCheck, newQueue) = odsToCheck.dequeue
+        odsToCheck = newQueue
+        if (checkOrderDependent((odToCheck._1 ++ odToCheck._2, odToCheck._2 ++ odToCheck._1), table))
         log.info(s"Worker tasked to check OD: $odToCheck")
         sender ! CheckForOD(odToCheck, reducedColumns)
         waitingForODStatus += odToCheck
@@ -113,22 +116,5 @@ class ODMaster(nWorkers: Int) extends Actor with ActorLogging with Pruning with 
         reducedColumns -= table.indexOf(column)
       }
     }
-  }
-
-  def getNextTuple(numColumns: Int): (Int, Int) = {
-    var leftCol = lastTuple._1
-    var rightCol = lastTuple._2
-    if (leftCol == numColumns - 1)
-      return lastTuple
-    do {
-      rightCol += 1
-      rightCol %= numColumns
-      if(rightCol == 0) {
-        leftCol += 1
-        rightCol = leftCol + 1
-      }
-    } while ( leftCol < numColumns - 1 &&
-      !(reducedColumns.contains(rightCol) && reducedColumns.contains(leftCol)))
-    (leftCol, rightCol)
   }
 }

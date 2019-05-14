@@ -20,11 +20,11 @@ object Worker {
 
   case class OrderEquivalent(oe: (Int, Int), isOrderEquiv: Boolean)
 
-  case class CheckForOD(odToCheck: (List[Int], List[Int]), reducedColumns: Set[Int])
+  case class CheckForOD(odToCheck: (Seq[Int], Seq[Int]), reducedColumns: Set[Int])
 
-  case class ODsToCheck(parentOD: (List[Int], List[Int]), newODs: Queue[(List[Int], List[Int])])
+  case class ODsToCheck(parentOD: (Seq[Int], Seq[Int]), newODs: Queue[(Seq[Int], Seq[Int])])
 
-  case class ODFound(od: (List[Int], List[Int]))
+  case class ODFound(od: (Seq[Int], Seq[Int]))
 
 }
 
@@ -46,8 +46,8 @@ class Worker extends Actor with ActorLogging with Pruning with CandidateGenerato
 
   def uninitialized: Receive = {
     case DataRef(table) =>
-      context.become(workReady(table))
       sender ! GetTask
+      context.become(workReady(table))
     case _ => log.info("Unknown message received")
   }
 
@@ -56,7 +56,7 @@ class Worker extends Actor with ActorLogging with Pruning with CandidateGenerato
       sender ! OrderEquivalent(oeToCheck, checkOrderEquivalent(table(oeToCheck._1), table(oeToCheck._2)))
       sender ! GetTask
     case CheckForOD(odCandidate, reducedColumns) =>
-      var newCandidates: Queue[(List[Int], List[Int])] = Queue.empty
+      var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
       if (checkOrderDependent(odCandidate, table)) {
         log.info(s"Found OD: $odCandidate")
         // TODO: Send to ResultCollector
