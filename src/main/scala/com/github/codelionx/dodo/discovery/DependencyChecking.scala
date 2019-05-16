@@ -48,9 +48,6 @@ trait DependencyChecking extends IndexedOrdering {
     val value1 = col(index1)
     val value2 = col(index2)
 
-    if (ordering.lteq(value1, value2))
-      true
-    else
-      false
+    ordering.lteq(value1, value2)
   }
 }
