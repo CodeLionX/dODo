@@ -99,8 +99,8 @@ class DependencyCheckingSpec extends WordSpec with Matchers {
 
     "check for a -> b, a -/> c, but a -> bc" in {
       val dataset: Array[TypedColumn[_ <: Any]] = Array(
-        TypedColumnBuilder.from("C", "A", "C", "Z", "C"),
-        TypedColumnBuilder.from(1.1, 2.2, 1.3, 23.1, 1.2),
+        TypedColumnBuilder.from(1.1, 0.2, 1.3, 23.1, 1.2),
+        TypedColumnBuilder.from("C", "A", "E", "Z", "E"),
         TypedColumnBuilder.from(801L, 120L, 105L, 294L, 102L)
       )
 
@@ -109,5 +109,25 @@ class DependencyCheckingSpec extends WordSpec with Matchers {
       DependencyCheckingTester.checkOrderDependent(Seq(0) -> Seq(1, 2), dataset) shouldEqual true
     }
 
+    "identify a swap" in {
+      val dataset: Array[TypedColumn[_ <: Any]] = Array(
+        TypedColumnBuilder.from("A", "A", "A"),
+        TypedColumnBuilder.from(0L, 1L, 4L),
+        TypedColumnBuilder.from(0L, 4L, 1L)
+      )
+
+      DependencyCheckingTester.checkOrderDependent(Seq(1) -> Seq(0, 2), dataset) shouldEqual false
+    }
+
+    "identify a split" in {
+      val dataset: Array[TypedColumn[_ <: Any]] = Array(
+        TypedColumnBuilder.from("A", "A", "A"),
+        TypedColumnBuilder.from(0L, 1L, 4L)
+      )
+
+      // the stable sort of the first column list makes this dependency true...
+      DependencyCheckingTester.checkOrderDependent(Seq(0) -> Seq(1), dataset) shouldEqual false
+      DependencyCheckingTester.checkOrderDependent(Seq(0) -> Seq(0, 1), dataset) shouldEqual false
+    }
   }
 }

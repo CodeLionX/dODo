@@ -33,21 +33,29 @@ trait DependencyChecking extends IndexedOrdering {
     val index = orderedIndicesOf(table, x)
 
     for (i <- 0 to index.length - 2) {
-      for (colIndex <- y) {
-        if (!checkOrdering(index(i), index(i + 1), table(colIndex))) {
-          return false
-        }
-      }
+      if(!checkTupleOrdering(y, table, index(i), index(i + 1)))
+        return false
     }
     true
   }
 
-  private def checkOrdering(index1: Int, index2: Int, col: TypedColumn[_ <: Any]): Boolean = {
-    val ordering = col.dataType.ordering.asInstanceOf[Ordering[Any]]
+  @inline
+  private def checkTupleOrdering(y: Seq[Int], table: Array[TypedColumn[_ <: Any]], index1: Int, index2: Int): Boolean = {
+    for(columnIndex <- y) {
+      val column = table(columnIndex)
+      val ordering = column.dataType.ordering.asInstanceOf[Ordering[Any]]
 
-    val value1 = col(index1)
-    val value2 = col(index2)
+      val value1 = column(index1)
+      val value2 = column(index2)
 
-    ordering.lteq(value1, value2)
+      if(ordering.gt(value1, value2))
+        return false
+
+      if(ordering.lt(value1, value2))
+        return true
+
+    }
+    true
   }
+
 }
