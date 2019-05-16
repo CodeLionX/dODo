@@ -24,17 +24,11 @@ object Main {
     val cluster = Cluster(system)
 
     cluster.registerOnMemberUp {
-      println("Cluster up")
 
       system.actorOf(Reaper.props, Reaper.name)
-      val systemCoordinator = system.actorOf(SystemCoordinator.props("data/horse.csv"), SystemCoordinator.name)
+      val systemCoordinator = system.actorOf(SystemCoordinator.props("data/iris.csv"), SystemCoordinator.name)
 
       systemCoordinator ! Initialize
-
-      // intentionally stopping systemCoordinator to test reaper functionality
-      //      system.stop(systemCoordinator)
-      // or:
-      //      systemCoordinator ! PoisonPill
     }
   }
 }

@@ -3,6 +3,7 @@ package com.github.codelionx.dodo.actors
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.actors.DataHolder.{DataRef, GetDataRef}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
+import com.github.codelionx.dodo.actors.SystemCoordinator.Finished
 import com.github.codelionx.dodo.actors.Worker.{CheckForEquivalency, CheckForOD, GetTask, ODsToCheck, OrderEquivalent}
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
@@ -15,14 +16,14 @@ object ODMaster {
 
   val name = "odmaster"
 
-  def props(nWorkers: Int, resultCollector: ActorRef): Props = Props(new ODMaster(nWorkers, resultCollector))
+  def props(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: ActorRef): Props = Props(new ODMaster(nWorkers, resultCollector, systemCoordinator))
 
   case class FindODs(dataHolder: ActorRef)
 
 }
 
 
-class ODMaster(nWorkers: Int, resultCollector: ActorRef) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
+class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: ActorRef) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
 
   import ODMaster._
   private val workers: Seq[ActorRef] = Seq.fill(nWorkers){context.actorOf(Worker.props(resultCollector), Worker.name)}
@@ -109,7 +110,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef) extends Actor with Acto
       waitingForODStatus -= originalOD
       if (waitingForODStatus.isEmpty && odsToCheck.isEmpty) {
         log.info("Found all ODs")
-        context.stop(self)
+        systemCoordinator ! Finished
       }
     case _ => log.info("Unknown message received")
   }
