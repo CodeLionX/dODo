@@ -85,8 +85,10 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef) extends Actor with Acto
       pendingPruningResponses -= 1
       if (pendingPruningResponses == 0 && columnIndexTuples.isEmpty) {
         log.info("Pruning done")
-        var equivalenceClasses: Map[Int, Seq[Int]] = Map.empty
-        reducedColumns.foreach(ind => equivalenceClasses += (ind -> orderEquivalencies(ind)))
+
+        val equivalenceClasses = reducedColumns.foldLeft(Map.empty[Int, Seq[Int]])(
+          (map, ind) => map + (ind -> orderEquivalencies(ind))
+        )
         resultCollector ! OrderEquivalencies(equivalenceClasses)
         odsToCheck ++= generateFirstCandidates(reducedColumns)
         context.become(findingODs(table))
@@ -113,13 +115,12 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef) extends Actor with Acto
   }
 
   def pruneConstColumns(table: Array[TypedColumn[Any]]): Seq[Int] = {
-    var constColumns: Seq[Int] = Seq.empty
-    for (column <- table) {
-      if (checkConstant(column)) {
-        reducedColumns -= table.indexOf(column)
-        constColumns = constColumns :+ table.indexOf(column)
-      }
-    }
+    val constColumns = for {
+      column <- table
+      if checkConstant(column)
+    } yield table.indexOf(column)
+
+    reducedColumns --= constColumns
     constColumns
   }
 }

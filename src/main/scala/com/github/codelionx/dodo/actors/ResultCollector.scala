@@ -23,10 +23,8 @@ class ResultCollector(filename: String) extends Actor with ActorLogging {
 
   import ResultCollector._
 
-  private var orderEquivalencies : Map[Int, Seq[Int]] = Map.empty
   // FileWriter
-  val file = new File(filename)
-  val bw = new BufferedWriter(new FileWriter(file))
+  val bw = new BufferedWriter(new FileWriter(new File(filename)))
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")
@@ -39,33 +37,33 @@ class ResultCollector(filename: String) extends Actor with ActorLogging {
 
   override def receive: Receive = {
     case ConstColumns(ccs) =>
-      bw.write("Constant columns: " + prettyList(ccs) + "\n")
-      log.info("Constant Columns: " + prettyList(ccs))
+      write("Constant columns: " + prettyList(ccs))
     case OrderEquivalencies(oes) =>
-      orderEquivalencies = oes
-      bw.write("Order Equivalent: \n")
-      log.info("Order Equivalent:")
+      write("Order Equivalent:")
       oes.foreach(oe =>
         if (oe._2.nonEmpty) {
-          bw.write(oe._1.toString + ", " + prettyList(oe._2) + "\n")
-          log.info(oe._1.toString + ", " + prettyList(oe._2))
+          write(oe._1.toString + ", " + prettyList(oe._2))
         }
       )
     case OD(od) =>
       val left = prettyList(od._1)
       val right = prettyList(od._2)
-      bw.write(s"OD: $left => $right \n")
-      log.info(s"OD: $left => $right")
+      write(s"OD: $left => $right")
       // TODO: extract order equivalent ods
     case _ => log.info("Unknown message received")
   }
 
+  def write(message: String): Unit = {
+    bw.write(message + "\n")
+    log.info(message)
+  }
+
   def prettyList(l: Seq[Int]): String = {
-    var newString = ""
+    val newString: StringBuilder = new StringBuilder()
     if (l.nonEmpty) {
-      newString += l.head
-      l.tail.foreach(elem => newString += ", " + elem)
+      newString.append(l.head)
+      l.tail.foreach(elem => newString.append(", ").append(elem))
     }
-    newString
+    newString.toString()
   }
 }

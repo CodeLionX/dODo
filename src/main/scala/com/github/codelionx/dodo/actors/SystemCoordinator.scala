@@ -23,7 +23,7 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with
 
 
   val nWorkers = 1
-  val resultCollector: ActorRef = context.actorOf(ResultCollector.props("results.txt"), ResultCollector.name)
+  val resultCollector: ActorRef = context.actorOf(ResultCollector.props("data/results.txt"), ResultCollector.name)
   val dataHolder: ActorRef = context.actorOf(DataHolder.props(), DataHolder.name)
   val odMaster: ActorRef = context.actorOf(ODMaster.props(nWorkers, resultCollector), ODMaster.name)
 
