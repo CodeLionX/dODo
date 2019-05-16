@@ -44,7 +44,7 @@ trait IndexedOrdering {
     val slice = extractIndexedSlice(column, sortIndices)
     val sortedSlice = sort(slice, column.dataType)
 
-    if (colIndex < dataset.length) {
+    if (colIndex < dataset.length - 1) {
       val ranges = constantRanges(sortedSlice)
 
       // sort those constant ranges by next column
