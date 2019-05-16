@@ -25,6 +25,7 @@ object SystemCoordinator {
 class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with DependencyChecking {
 
   import SystemCoordinator._
+  import com.github.codelionx.dodo.GlobalImplicits._
 
 
   val nWorkers = 1
@@ -67,7 +68,7 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with
             |Started OD discovery with timestamp: $startTime
             |Finished OD discovery with timestamp: $endTime
             |================================================
-            |Duration: ${duration.toMillis}
+            |Duration: ${duration.pretty}
             |================================================
             |""".stripMargin
       )
