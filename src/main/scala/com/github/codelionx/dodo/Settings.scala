@@ -32,6 +32,8 @@ class Settings(config: Config) extends Extension {
   private val namespace = "com.github.codelionx.dodo"
 
   // add config values here
-  //val linearizationPartitionSize: Int = config.getInt(s"$namespace.linearization-partition-size")
+  val inputFilePath: String = config.getString(s"$namespace.input-file")
+
+  val outputFilePath: String = config.getString(s"$namespace.output-file")
 
 }

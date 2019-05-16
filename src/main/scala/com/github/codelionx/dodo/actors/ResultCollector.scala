@@ -2,7 +2,8 @@ package com.github.codelionx.dodo.actors
 
 import java.io.{BufferedWriter, File, FileWriter}
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, Props}
+import com.github.codelionx.dodo.Settings
 
 
 object ResultCollector {
@@ -23,8 +24,10 @@ class ResultCollector(filename: String) extends Actor with ActorLogging {
 
   import ResultCollector._
 
+  private val settings = Settings(context.system)
+
   // FileWriter
-  val bw = new BufferedWriter(new FileWriter(new File(filename)))
+  val bw = new BufferedWriter(new FileWriter(new File(settings.outputFilePath)))
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")

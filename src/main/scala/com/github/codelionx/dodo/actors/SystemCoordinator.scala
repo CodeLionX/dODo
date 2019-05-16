@@ -1,7 +1,8 @@
 package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
-import com.github.codelionx.dodo.actors.DataHolder.{DataLoaded, DataRef, GetDataRef, LoadData}
+import com.github.codelionx.dodo.Settings
+import com.github.codelionx.dodo.actors.DataHolder.{DataLoaded, LoadData}
 import com.github.codelionx.dodo.actors.ODMaster.FindODs
 import com.github.codelionx.dodo.discovery.DependencyChecking
 
@@ -10,17 +11,17 @@ object SystemCoordinator {
 
   val name = "systemcoordinator"
 
-  def props(dataSource: String): Props = Props(new SystemCoordinator(dataSource))
+  def props(): Props = Props[SystemCoordinator]
 
   case object Initialize
 
 }
 
-class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with DependencyChecking {
+class SystemCoordinator extends Actor with ActorLogging with DependencyChecking {
 
   import SystemCoordinator._
-  import com.github.codelionx.dodo.types.Implicits._
 
+  private val settings = Settings(context.system)
 
   val nWorkers = 1
   val resultCollector: ActorRef = context.actorOf(ResultCollector.props("data/results.txt"), ResultCollector.name)
@@ -40,7 +41,7 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with
     case Initialize =>
       log.info("Preparing for OD discovery")
       log.info("  Loading and parsing data")
-      dataHolder ! LoadData(dataSource)
+      dataHolder ! LoadData(settings.inputFilePath)
 
 //      log.info("  Creating initial search space")
 //      log.info("  ...")
