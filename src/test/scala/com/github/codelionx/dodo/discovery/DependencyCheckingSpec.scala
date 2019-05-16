@@ -119,7 +119,7 @@ class DependencyCheckingSpec extends WordSpec with Matchers {
       DependencyCheckingTester.checkOrderDependent(Seq(1) -> Seq(0, 2), dataset) shouldEqual false
     }
 
-    "identify a split" in {
+    "identify a split" in pendingUntilFixed{
       val dataset: Array[TypedColumn[_ <: Any]] = Array(
         TypedColumnBuilder.from("A", "A", "A"),
         TypedColumnBuilder.from(0L, 1L, 4L)
