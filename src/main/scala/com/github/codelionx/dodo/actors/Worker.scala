@@ -67,15 +67,14 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
         resultCollector ! OD(ocdCandidate)
 
         var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
+
         if (checkOrderDependent(odCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
-          log.info(s"Found OD: $odCandidate")
           resultCollector ! OD(odCandidate)
         } else {
           newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
         }
         val mirroredOD = (odCandidate._2, odCandidate._1)
         if (checkOrderDependent(mirroredOD, table.asInstanceOf[Array[TypedColumn[_]]])) {
-          log.info(s"Found OD: $mirroredOD")
           resultCollector ! OD(mirroredOD)
         } else {
           newCandidates ++= generateODCandidates(reducedColumns, mirroredOD)

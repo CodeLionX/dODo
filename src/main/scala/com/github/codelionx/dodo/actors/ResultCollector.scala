@@ -39,29 +39,33 @@ class ResultCollector(filename: String) extends Actor with ActorLogging {
 
   override def receive: Receive = {
     case ConstColumns(ccs) =>
-      bw.write("Constant columns: ")
-      bw.write(prettyList(ccs) + "\n")
+      bw.write("Constant columns: " + prettyList(ccs) + "\n")
+      log.info("Constant Columns: " + prettyList(ccs))
     case OrderEquivalencies(oes) =>
       orderEquivalencies = oes
       bw.write("Order Equivalent: \n")
+      log.info("Order Equivalent:")
       oes.foreach(oe =>
         if (oe._2.nonEmpty) {
-          bw.write(oe._1.toString + ", ")
-          bw.write(prettyList(oe._2) + "\n")
+          bw.write(oe._1.toString + ", " + prettyList(oe._2) + "\n")
+          log.info(oe._1.toString + ", " + prettyList(oe._2))
         }
       )
     case OD(od) =>
       val left = prettyList(od._1)
       val right = prettyList(od._2)
       bw.write(s"OD: $left => $right \n")
+      log.info(s"OD: $left => $right")
       // TODO: extract order equivalent ods
     case _ => log.info("Unknown message received")
   }
 
   def prettyList(l: Seq[Int]): String = {
     var newString = ""
-    newString += l.head
-    l.tail.foreach(elem => newString += ", " + elem)
+    if (l.nonEmpty) {
+      newString += l.head
+      l.tail.foreach(elem => newString += ", " + elem)
+    }
     newString
   }
 }

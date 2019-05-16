@@ -75,14 +75,12 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef) extends Actor with Acto
           nextTuple = columnIndexTuples.next()
         }
         sender ! CheckForEquivalency(nextTuple)
-        log.info(s"Worker tasked to check OE: $nextTuple")
         pendingPruningResponses += 1
       }
     case OrderEquivalent(od, isOrderEquiv) =>
       if (isOrderEquiv) {
         reducedColumns -= od._2
         orderEquivalencies(od._1) :+= od._2
-        log.info(s"OrderEquivalency found: $od")
       }
       pendingPruningResponses -= 1
       if (pendingPruningResponses == 0 && columnIndexTuples.isEmpty) {
@@ -101,7 +99,6 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef) extends Actor with Acto
       if (odsToCheck.nonEmpty) {
         val (odToCheck, newQueue) = odsToCheck.dequeue
         odsToCheck = newQueue
-        log.info(s"Worker tasked to check OD: $odToCheck")
         sender ! CheckForOD(odToCheck, reducedColumns)
         waitingForODStatus += odToCheck
       }
@@ -119,7 +116,6 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef) extends Actor with Acto
     var constColumns: Seq[Int] = Seq.empty
     for (column <- table) {
       if (checkConstant(column)) {
-        log.info(s"found const column: ${table.indexOf(column)}")
         reducedColumns -= table.indexOf(column)
         constColumns = constColumns :+ table.indexOf(column)
       }
