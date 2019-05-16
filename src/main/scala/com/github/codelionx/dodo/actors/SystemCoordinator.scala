@@ -1,7 +1,8 @@
 package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
-import com.github.codelionx.dodo.actors.DataHolder.{DataRef, GetDataRef, LoadData}
+import com.github.codelionx.dodo.actors.DataHolder.{DataLoaded, DataRef, GetDataRef, LoadData}
+import com.github.codelionx.dodo.actors.ODMaster.FindODs
 import com.github.codelionx.dodo.discovery.Pruning
 
 
@@ -21,12 +22,10 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with
   import com.github.codelionx.dodo.types.Implicits._
 
 
+  val nWorkers = 1
   val dataHolder: ActorRef = context.actorOf(DataHolder.props(), DataHolder.name)
+  val odMaster: ActorRef = context.actorOf(ODMaster.props(nWorkers), ODMaster.name)
 
-  // TODO: setup workerManager to start extracting ODs once data is read
-  // TODO: create result Collector
-
-  // TODO: setup and handle workers
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")
@@ -50,21 +49,15 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with
       log.info("Testing data passing ...")
       dataHolder ! GetDataRef
 
+    case DataLoaded =>
+      odMaster ! FindODs(dataHolder)
+
     case DataRef(data) =>
       log.info("... data passing successful:")
       println(data.prettyPrint)
 
-      for (column <- data) {
-        if (checkConstant(column))
-          log.info(s"found const column: ${data.indexOf(column)}")
-        for (col2 <- data) {
-          if (checkOrderEquivalent(column, col2))
-            log.info(s"Found Order Equivalence: ${data.indexOf(column)} <-> ${data.indexOf(col2)}")
-        }
-      }
-
-      log.info("shutting down")
-      context.stop(self)
+      //log.info("shutting down")
+      //context.stop(self)
     // ---
 
     // TODO

@@ -21,4 +21,8 @@ trait Pruning {
     val sortedCol2 = col2.sortedIndices
     sortedCol1 sameElements sortedCol2
   }
+
+  def checkOrderDependent (od: (Seq[Int], Seq[Int]), table: Array[TypedColumn[Any]]): Boolean = {
+    true
+  }
 }

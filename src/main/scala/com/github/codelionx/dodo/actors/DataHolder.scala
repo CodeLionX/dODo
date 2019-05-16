@@ -13,6 +13,8 @@ object DataHolder {
 
   case class LoadData(localFilename: String) extends Serializable
 
+  case object DataLoaded
+
   // following messages should only be used within the actor system
   /**
     * Message to request the data reference. It is returned as [[com.github.codelionx.dodo.actors.DataHolder.DataRef]]
@@ -43,6 +45,7 @@ class DataHolder extends Actor with ActorLogging {
       val data = CSVParser.parse(localFilename)
       log.info(s"Loaded data from $localFilename. $name is ready")
       context.become(dataReady(data))
+      sender ! DataLoaded
 
     case _ => log.info("Unknown message received")
   }
