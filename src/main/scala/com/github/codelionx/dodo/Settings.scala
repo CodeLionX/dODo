@@ -36,4 +36,5 @@ class Settings(config: Config) extends Extension {
 
   val outputFilePath: String = config.getString(s"$namespace.output-file")
 
+  val workers: Int = config.getInt(s"$namespace.workers")
 }
