@@ -12,9 +12,12 @@ trait CandidateGenerator {
     Queue(candidates: _*)
   }
 
-  def generateODCandidates(columns: Set[Int], od: (Seq[Int], Seq[Int])): Queue[(Seq[Int], Seq[Int])] = {
+  def generateODCandidates(columns: Set[Int], od: (Seq[Int], Seq[Int]), leftSide: Boolean = true): Queue[(Seq[Int], Seq[Int])] = {
     val aPlus = (columns -- od._1.toSet) -- od._2.toSet
-    val newCandidates = aPlus.map(col => (od._1 :+ col, od._2))
+    val newCandidates = aPlus.map(col =>
+      if(leftSide) (od._1 :+ col, od._2)
+      else (od._1, od._2:+ col)
+    )
     Queue(newCandidates.toList: _*)
   }
 }

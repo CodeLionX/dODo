@@ -2,7 +2,11 @@ package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
+
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
+
+import com.github.codelionx.dodo.actors.ResultCollector.OD
+
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.collection.immutable.Queue
@@ -12,7 +16,7 @@ object Worker {
 
   val name = "worker"
 
-  def props(): Props = Props[Worker]
+  def props(resultCollector: ActorRef): Props = Props(new Worker(resultCollector))
 
   case object GetTask
 
@@ -29,7 +33,7 @@ object Worker {
 }
 
 
-class Worker extends Actor with ActorLogging with DependencyChecking with CandidateGenerator{
+class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator{
 
   import Worker._
 
@@ -57,24 +61,22 @@ class Worker extends Actor with ActorLogging with DependencyChecking with Candid
       sender ! GetTask
 
     case CheckForOD(odCandidate, reducedColumns) =>
-      if (checkOrderDependent(
-        (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1),
-        table.asInstanceOf[Array[TypedColumn[_]]])
-      ) {
-        // TODO: send OD to resultCollector
+      val ocdCandidate = (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1)
+      if (checkOrderDependent(ocdCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
+        resultCollector ! OD(ocdCandidate)
+
         var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
+
         if (checkOrderDependent(odCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
-          log.info(s"Found OD: $odCandidate")
-          // TODO: Send to ResultCollector
+          resultCollector ! OD(odCandidate)
         } else {
           newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
         }
-        val mirroredOD = (odCandidate._2, odCandidate._1)
+        val mirroredOD = odCandidate.swap
         if (checkOrderDependent(mirroredOD, table.asInstanceOf[Array[TypedColumn[_]]])) {
-          log.info(s"Found OD: $mirroredOD")
-          // TODO: Send to ResultCollector
+          resultCollector ! OD(mirroredOD)
         } else {
-          newCandidates ++= generateODCandidates(reducedColumns, mirroredOD)
+          newCandidates ++= generateODCandidates(reducedColumns, odCandidate, leftSide = false)
         }
         sender ! ODsToCheck(odCandidate, newCandidates)
       } else {

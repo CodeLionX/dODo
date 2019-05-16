@@ -1,21 +1,30 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, Props}
+import java.io.{BufferedWriter, File, FileWriter}
+
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 
 
 object ResultCollector {
 
   val name = "resultcollector"
 
-  def props(): Props = Props[ResultCollector]
+  def props(filename: String): Props = Props(new ResultCollector(filename))
 
+  case class ConstColumns(ccs: Seq[Int])
+
+  case class OrderEquivalencies(oe: Map[Int, Seq[Int]])
+
+  case class OD(od: (Seq[Int], Seq[Int]))
 }
 
 
-class ResultCollector extends Actor with ActorLogging {
+class ResultCollector(filename: String) extends Actor with ActorLogging {
 
   import ResultCollector._
 
+  // FileWriter
+  val bw = new BufferedWriter(new FileWriter(new File(filename)))
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")
@@ -23,11 +32,38 @@ class ResultCollector extends Actor with ActorLogging {
   }
 
   override def postStop(): Unit =
+    bw.close()
     log.info(s"Stopping $name")
 
   override def receive: Receive = {
-    // TODO: extract ODs from OCDs?
-    // TODO: write ODs into file
+    case ConstColumns(ccs) =>
+      write("Constant columns: " + prettyList(ccs))
+    case OrderEquivalencies(oes) =>
+      write("Order Equivalent:")
+      oes.foreach(oe =>
+        if (oe._2.nonEmpty) {
+          write(oe._1.toString + ", " + prettyList(oe._2))
+        }
+      )
+    case OD(od) =>
+      val left = prettyList(od._1)
+      val right = prettyList(od._2)
+      write(s"OD: $left => $right")
+      // TODO: extract order equivalent ods
     case _ => log.info("Unknown message received")
+  }
+
+  def write(message: String): Unit = {
+    bw.write(message + "\n")
+    log.info(message)
+  }
+
+  def prettyList(l: Seq[Int]): String = {
+    val newString: StringBuilder = new StringBuilder()
+    if (l.nonEmpty) {
+      newString.append(l.head)
+      l.tail.foreach(elem => newString.append(", ").append(elem))
+    }
+    newString.toString()
   }
 }
