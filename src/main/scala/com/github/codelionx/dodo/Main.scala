@@ -27,7 +27,7 @@ object Main {
       println("Cluster up")
 
       system.actorOf(Reaper.props, Reaper.name)
-      val systemCoordinator = system.actorOf(SystemCoordinator.props("data/horse.csv"), SystemCoordinator.name)
+      val systemCoordinator = system.actorOf(SystemCoordinator.props(), SystemCoordinator.name)
 
       systemCoordinator ! Initialize
 
