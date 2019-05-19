@@ -26,7 +26,7 @@ object Main {
     cluster.registerOnMemberUp {
 
       system.actorOf(Reaper.props, Reaper.name)
-      val systemCoordinator = system.actorOf(SystemCoordinator.props("data/iris.csv"), SystemCoordinator.name)
+      val systemCoordinator = system.actorOf(SystemCoordinator.props(), SystemCoordinator.name)
 
       systemCoordinator ! Initialize
     }

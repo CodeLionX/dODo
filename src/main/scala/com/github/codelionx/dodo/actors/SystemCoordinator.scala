@@ -3,6 +3,7 @@ package com.github.codelionx.dodo.actors
 import java.time.LocalDateTime
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.DataHolder.{DataLoaded, LoadData}
 import com.github.codelionx.dodo.actors.ODMaster.FindODs
 import com.github.codelionx.dodo.discovery.DependencyChecking
@@ -14,7 +15,7 @@ object SystemCoordinator {
 
   val name = "systemcoordinator"
 
-  def props(dataSource: String): Props = Props(new SystemCoordinator(dataSource))
+  def props(): Props = Props[SystemCoordinator]
 
   case object Initialize
 
@@ -22,14 +23,15 @@ object SystemCoordinator {
 
 }
 
-class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with DependencyChecking {
+class SystemCoordinator extends Actor with ActorLogging with DependencyChecking {
 
   import SystemCoordinator._
   import com.github.codelionx.dodo.GlobalImplicits._
 
+  private val settings = Settings(context.system)
 
-  val nWorkers = 1
-  val resultCollector: ActorRef = context.actorOf(ResultCollector.props("data/results.txt"), ResultCollector.name)
+  val nWorkers = settings.workers
+  val resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
   val dataHolder: ActorRef = context.actorOf(DataHolder.props(), DataHolder.name)
   val odMaster: ActorRef = context.actorOf(ODMaster.props(nWorkers, resultCollector, self), ODMaster.name)
 
@@ -48,7 +50,7 @@ class SystemCoordinator(dataSource: String) extends Actor with ActorLogging with
   override def receive: Receive = {
     case Initialize =>
       log.info("Preparing for OD discovery: loading data")
-      dataHolder ! LoadData(dataSource)
+      dataHolder ! LoadData(settings.inputFilePath)
 
     case DataLoaded =>
       log.info("Starting master and passing ref to data holder")

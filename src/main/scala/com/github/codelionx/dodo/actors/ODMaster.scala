@@ -78,6 +78,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         sender ! CheckForEquivalency(nextTuple)
         pendingPruningResponses += 1
       }
+
     case OrderEquivalent(od, isOrderEquiv) =>
       if (isOrderEquiv) {
         reducedColumns -= od._2
@@ -94,6 +95,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         odsToCheck ++= generateFirstCandidates(reducedColumns)
         context.become(findingODs(table))
       }
+
     case _ => log.info("Unknown message received")
   }
 
@@ -105,6 +107,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         sender ! CheckForOD(odToCheck, reducedColumns)
         waitingForODStatus += odToCheck
       }
+
     case ODsToCheck(originalOD, newODs) =>
       odsToCheck ++= newODs
       waitingForODStatus -= originalOD
@@ -112,6 +115,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         log.info("Found all ODs")
         systemCoordinator ! Finished
       }
+
     case _ => log.info("Unknown message received")
   }
 
