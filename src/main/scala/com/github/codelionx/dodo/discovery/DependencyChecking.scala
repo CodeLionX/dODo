@@ -19,7 +19,17 @@ trait DependencyChecking extends IndexedOrdering {
   def checkOrderEquivalent(col1: TypedColumn[_ <: Any], col2: TypedColumn[_ <: Any]): Boolean = {
     val sortedCol1 = col1.sortedIndices
     val sortedCol2 = col2.sortedIndices
-    sortedCol1 sameElements sortedCol2
+    if (sortedCol1 sameElements sortedCol2) {
+      for(i <- 0 to sortedCol1.length - 2) {
+        if((col1(sortedCol1(i)) == col1(sortedCol1(i+1)))
+          != (col2(sortedCol2(i)) == col2(sortedCol2(i+1)))) {
+          return false
+        }
+      }
+      true
+    } else {
+      false
+    }
   }
 
   /**
@@ -33,7 +43,12 @@ trait DependencyChecking extends IndexedOrdering {
     val index = orderedIndicesOf(table, x)
 
     for (i <- 0 to index.length - 2) {
+      // detect swaps
       if(!checkTupleOrdering(y, table, index(i), index(i + 1)))
+        return false
+      // detect splits
+      if(checkTupleEq(x, table, index(i), index(i+1))
+        && !checkTupleEq(y, table, index(i), index(i+1)) )
         return false
     }
     true
@@ -54,6 +69,22 @@ trait DependencyChecking extends IndexedOrdering {
       if(ordering.lt(value1, value2))
         return true
 
+    }
+    true
+  }
+
+  @inline
+  private def checkTupleEq(y: Seq[Int], table: Array[TypedColumn[_ <: Any]], index1: Int, index2: Int): Boolean = {
+    for(columnIndex <- y) {
+      val column = table(columnIndex)
+      val ordering = column.dataType.ordering.asInstanceOf[Ordering[Any]]
+
+      val value1 = column(index1)
+      val value2 = column(index2)
+
+      // this somehow doesn't work
+      if(!ordering.equiv(value1, value2))
+        return false
     }
     true
   }
