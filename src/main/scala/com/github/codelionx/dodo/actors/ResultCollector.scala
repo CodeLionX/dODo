@@ -18,6 +18,8 @@ object ResultCollector {
 
   case class OD(od: (Seq[Int], Seq[Int]))
 
+  case class OCD(ocd: (Seq[Int], Seq[Int]))
+
 }
 
 
@@ -58,6 +60,11 @@ class ResultCollector extends Actor with ActorLogging {
       val right = prettyList(od._2)
       write(s"OD: $left => $right")
       // TODO: extract order equivalent ods
+
+    case OCD(ocd) =>
+      val left = prettyList(ocd._1)
+      val right = prettyList(ocd._2)
+      write(s"OCD: $left ~ $right")
 
     case _ => log.info("Unknown message received")
   }
