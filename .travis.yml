@@ -4,7 +4,6 @@ sudo: false
 
 scala:
   - "2.12.8"
-  - "2.11.12" # check also for backwards compatibility
 
 jdk:
   - oraclejdk8
@@ -26,12 +25,17 @@ cache:
   directories:
     - $HOME/.ivy2/cache
     - $HOME/.sbt/boot
+    - data
 
 # if build is a pull request and origin branch starts with doc/ skip the build (successfully)
 before_install:
   - if [[ "$TRAVIS_PULL_REQUEST" != "false" && "$TRAVIS_PULL_REQUEST_BRANCH" == doc/* ]]; then exit 0; fi
 
+before_script:
+  - mkdir -p data
+  - "[ -f data/test.csv ] || curl -o data/test.csv https://gist.githubusercontent.com/CodeLionX/2bc7f6145dd21bc9c1ebcb94a922d428/raw/0ab1f828a370a2795f125ee19da1610b1054cf9e/tests.csv"
+
 # build script (sbt test and sbt run sampleapp.Main)
 script:
   - sbt ++$TRAVIS_SCALA_VERSION coverage test coverageReport coverageAggregate codacyCoverage
-  - sbt ++$TRAVIS_SCALA_VERSION run
+  - sbt ++$TRAVIS_SCALA_VERSION -Dcom.github.codelionx.dodo.input-file=data/test.csv run
