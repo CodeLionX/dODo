@@ -137,7 +137,6 @@ class DependencyCheckingSpec extends WordSpec with Matchers {
         TypedColumnBuilder.from(0L, 1L, 4L)
       )
 
-      // the stable sort of the first column list makes this dependency true...
       DependencyCheckingTester.checkOrderDependent(Seq(0) -> Seq(1), dataset) shouldEqual false
       DependencyCheckingTester.checkOrderDependent(Seq(0) -> Seq(0, 1), dataset) shouldEqual false
     }
