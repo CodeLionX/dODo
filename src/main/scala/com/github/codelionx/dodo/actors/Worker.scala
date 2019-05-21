@@ -2,11 +2,8 @@ package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
-
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
-
-import com.github.codelionx.dodo.actors.ResultCollector.OD
-
+import com.github.codelionx.dodo.actors.ResultCollector.{OCD, OD}
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.collection.immutable.Queue
@@ -63,7 +60,7 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
     case CheckForOD(odCandidate, reducedColumns) =>
       val ocdCandidate = (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1)
       if (checkOrderDependent(ocdCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
-        resultCollector ! OD(ocdCandidate)
+        resultCollector ! OCD(odCandidate)
 
         var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
 
