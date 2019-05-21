@@ -58,13 +58,25 @@ class DependencyCheckingSpec extends WordSpec with Matchers {
     }
 
     "check for order equivalence" in {
-      val col1 = TypedColumnBuilder.from("C", "A", "B", "Z", "C")
+      val col1 = TypedColumnBuilder.from("D", "A", "B", "Z", "C")
 
-      val col2 = TypedColumnBuilder.from(10L, 5L, 8L, 24L, 11L)
-      val col3 = TypedColumnBuilder.from(.11, .5, .8, .24, .10)
+      val col2 = TypedColumnBuilder.from(11L, 5L, 8L, 24L, 10L)
+      val col3 = TypedColumnBuilder.from(4.11, 1.5, 2.8, 5.24, 3.10)
       val col4 = TypedColumnBuilder.from("x", "a", "c", "d", "a")
 
       DependencyCheckingTester.checkOrderEquivalent(col1, col2) shouldEqual true
+      DependencyCheckingTester.checkOrderEquivalent(col1, col3) shouldEqual true
+      DependencyCheckingTester.checkOrderEquivalent(col1, col4) shouldEqual false
+    }
+
+    "check for order equivalence with equal cells in left column" in {
+      val col1 = TypedColumnBuilder.from("C", "A", "B", "Z", "C")
+
+      val col2 = TypedColumnBuilder.from(10L, 5L, 8L, 24L, 11L)
+      val col3 = TypedColumnBuilder.from(4.11, 1.5, 2.8, 5.24, 3.10)
+      val col4 = TypedColumnBuilder.from("x", "a", "c", "d", "a")
+
+      DependencyCheckingTester.checkOrderEquivalent(col1, col2) shouldEqual false
       DependencyCheckingTester.checkOrderEquivalent(col1, col3) shouldEqual false
       DependencyCheckingTester.checkOrderEquivalent(col1, col4) shouldEqual false
     }
@@ -119,7 +131,7 @@ class DependencyCheckingSpec extends WordSpec with Matchers {
       DependencyCheckingTester.checkOrderDependent(Seq(1) -> Seq(0, 2), dataset) shouldEqual false
     }
 
-    "identify a split" in pendingUntilFixed{
+    "identify a split" in {
       val dataset: Array[TypedColumn[_ <: Any]] = Array(
         TypedColumnBuilder.from("A", "A", "A"),
         TypedColumnBuilder.from(0L, 1L, 4L)
