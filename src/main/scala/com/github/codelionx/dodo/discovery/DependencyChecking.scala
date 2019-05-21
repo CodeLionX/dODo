@@ -20,9 +20,9 @@ trait DependencyChecking extends IndexedOrdering {
     val sortedCol1 = col1.sortedIndices
     val sortedCol2 = col2.sortedIndices
     if (sortedCol1 sameElements sortedCol2) {
-      for(i <- 0 to sortedCol1.length - 2) {
-        if((col1(sortedCol1(i)) == col1(sortedCol1(i+1)))
-          != (col2(sortedCol2(i)) == col2(sortedCol2(i+1)))) {
+      for (i <- 0 to sortedCol1.length - 2) {
+        if ((col1(sortedCol1(i)) == col1(sortedCol1(i + 1)))
+          != (col2(sortedCol2(i)) == col2(sortedCol2(i + 1)))) {
           return false
         }
       }
@@ -43,50 +43,38 @@ trait DependencyChecking extends IndexedOrdering {
     val index = orderedIndicesOf(table, x)
 
     for (i <- 0 to index.length - 2) {
-      // detect swaps
-      if(!checkTupleOrdering(y, table, index(i), index(i + 1)))
+      val index1 = index(i)
+      val index2 = index(i + 1)
+      val compRight = checkTupleOrdering(y, table, index1, index2)
+      if (compRight > 0) {
+        // swap
         return false
-      // detect splits
-      if(checkTupleEq(x, table, index(i), index(i+1))
-        && !checkTupleEq(y, table, index(i), index(i+1)) )
-        return false
+      } else {
+        val comp2 = checkTupleOrdering(x, table, index1, index2)
+        if (comp2 == 0 && compRight != 0) {
+          // split
+          return false
+        }
+      }
     }
     true
   }
 
   @inline
-  private def checkTupleOrdering(y: Seq[Int], table: Array[TypedColumn[_ <: Any]], index1: Int, index2: Int): Boolean = {
-    for(columnIndex <- y) {
+  private def checkTupleOrdering(y: Seq[Int], table: Array[TypedColumn[_ <: Any]], index1: Int, index2: Int): Int = {
+    for (columnIndex <- y) {
       val column = table(columnIndex)
       val ordering = column.dataType.ordering.asInstanceOf[Ordering[Any]]
 
       val value1 = column(index1)
       val value2 = column(index2)
 
-      if(ordering.gt(value1, value2))
-        return false
+      val comp = ordering.compare(value1, value2)
 
-      if(ordering.lt(value1, value2))
-        return true
-
+      if (comp != 0) {
+        return comp
+      }
     }
-    true
+    0
   }
-
-  @inline
-  private def checkTupleEq(y: Seq[Int], table: Array[TypedColumn[_ <: Any]], index1: Int, index2: Int): Boolean = {
-    for(columnIndex <- y) {
-      val column = table(columnIndex)
-      val ordering = column.dataType.ordering.asInstanceOf[Ordering[Any]]
-
-      val value1 = column(index1)
-      val value2 = column(index2)
-
-      // this somehow doesn't work
-      if(!ordering.equiv(value1, value2))
-        return false
-    }
-    true
-  }
-
 }
