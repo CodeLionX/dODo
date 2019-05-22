@@ -1,6 +1,7 @@
 package com.github.codelionx.dodo
 
 import akka.actor.{ExtendedActorSystem, Extension, ExtensionId, ExtensionIdProvider}
+import com.github.codelionx.dodo.Settings.ParsingSettings
 import com.typesafe.config.Config
 
 
@@ -16,6 +17,7 @@ object Settings extends ExtensionId[Settings] with ExtensionIdProvider {
   final object DefaultValues {
 
     final object NodeRole {
+
       final val Leader = "leader"
       final val Follower = "follower"
     }
@@ -24,6 +26,14 @@ object Settings extends ExtensionId[Settings] with ExtensionIdProvider {
     final val PORT = 7877
   }
 
+  class ParsingSettings(config: Config, namespace: String) {
+
+    private val subnamespace = s"$namespace.parsing"
+
+    val nInferringRows: Int = config.getInt(s"$subnamespace.inferring-rows")
+
+    val parseHeader: Boolean = config.getBoolean(s"$subnamespace.has-header")
+  }
 }
 
 
@@ -31,10 +41,12 @@ class Settings(config: Config) extends Extension {
 
   private val namespace = "com.github.codelionx.dodo"
 
-  // add config values here
   val inputFilePath: String = config.getString(s"$namespace.input-file")
 
   val outputFilePath: String = config.getString(s"$namespace.output-file")
 
   val workers: Int = config.getInt(s"$namespace.workers")
+
+  val parsing: ParsingSettings = new ParsingSettings(config, namespace)
+
 }
