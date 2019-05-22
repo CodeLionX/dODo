@@ -7,9 +7,7 @@ import com.univocity.parsers.common.processor.AbstractRowProcessor
 
 object TypedColumnProcessor {
 
-  val DEFAULT_N_INFERRING_ROWS = 20
-
-  def apply(nInferringRows: Int = DEFAULT_N_INFERRING_ROWS): TypedColumnProcessor = new TypedColumnProcessor(nInferringRows)
+  def apply(nInferringRows: Int): TypedColumnProcessor = new TypedColumnProcessor(nInferringRows)
 
 }
 
