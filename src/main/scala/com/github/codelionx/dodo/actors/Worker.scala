@@ -59,23 +59,28 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
     case CheckForOD(odCandidate, reducedColumns) =>
       val ocdCandidate = (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1)
+      var foundOD = false
       if (checkOrderDependent(ocdCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
-        resultCollector ! OCD(odCandidate)
 
         var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
 
         if (checkOrderDependent(odCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
           resultCollector ! OD(odCandidate)
+          foundOD = true
         } else {
           newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
         }
         val mirroredOD = odCandidate.swap
         if (checkOrderDependent(mirroredOD, table.asInstanceOf[Array[TypedColumn[_]]])) {
           resultCollector ! OD(mirroredOD)
+          foundOD = true
         } else {
           newCandidates ++= generateODCandidates(reducedColumns, odCandidate, leftSide = false)
         }
         sender ! ODsToCheck(odCandidate, newCandidates)
+        if (foundOD) {
+          resultCollector ! OCD(odCandidate)
+        }
       } else {
         sender ! ODsToCheck(odCandidate, Queue.empty)
       }
