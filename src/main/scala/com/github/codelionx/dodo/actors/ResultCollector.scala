@@ -30,6 +30,8 @@ class ResultCollector extends Actor with ActorLogging {
 
   private val settings = Settings(context.system)
 
+  private var odsFound = 0
+
   // FileWriter
   val bw = new BufferedWriter(new FileWriter(new File(settings.outputFilePath)))
 
@@ -40,6 +42,7 @@ class ResultCollector extends Actor with ActorLogging {
 
   override def postStop(): Unit = {
     bw.close()
+    log.info(s"$odsFound ODs found")
     log.info(s"Stopping $name")
   }
 
@@ -59,11 +62,15 @@ class ResultCollector extends Actor with ActorLogging {
       val left = prettyList(od._1)
       val right = prettyList(od._2)
       write(s"OD: $left => $right")
+      odsFound += 1
       // TODO: extract order equivalent ods
 
     case OCD(ocd) =>
       val left = prettyList(ocd._1)
       val right = prettyList(ocd._2)
+      if (settings.ocdComparability) {
+        odsFound += 1
+      }
       write(s"OCD: $left ~ $right")
 
     case _ => log.info("Unknown message received")
