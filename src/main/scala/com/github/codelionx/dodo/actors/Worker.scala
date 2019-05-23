@@ -1,6 +1,7 @@
 package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.actors.ResultCollector.{OCD, OD}
@@ -34,6 +35,7 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
   import Worker._
 
+  private val settings = Settings(context.system)
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")
@@ -59,23 +61,28 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
     case CheckForOD(odCandidate, reducedColumns) =>
       val ocdCandidate = (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1)
+      var foundOD = false
       if (checkOrderDependent(ocdCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
-        resultCollector ! OCD(odCandidate)
 
         var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
 
         if (checkOrderDependent(odCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
           resultCollector ! OD(odCandidate)
+          foundOD = true
         } else {
           newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
         }
         val mirroredOD = odCandidate.swap
         if (checkOrderDependent(mirroredOD, table.asInstanceOf[Array[TypedColumn[_]]])) {
           resultCollector ! OD(mirroredOD)
+          foundOD = true
         } else {
           newCandidates ++= generateODCandidates(reducedColumns, odCandidate, leftSide = false)
         }
         sender ! ODsToCheck(odCandidate, newCandidates)
+        if (foundOD || !settings.ocdComparability ) {
+          resultCollector ! OCD(odCandidate)
+        }
       } else {
         sender ! ODsToCheck(odCandidate, Queue.empty)
       }
