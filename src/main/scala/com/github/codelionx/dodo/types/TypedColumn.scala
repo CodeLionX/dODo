@@ -25,6 +25,11 @@ abstract class TypedColumnBase[T <: Any](implicit ev: ClassTag[T]) {
     * Returns the backing array of this `TypedColumn`.
     */
   def array: Array[T]
+
+  /**
+    * Column name
+    */
+  def name: String
 }
 
 /**
@@ -65,7 +70,7 @@ trait TypedColumn[T <: Any]
     */
   private final class BuilderAdapter extends mutable.ReusableBuilder[T, TypedColumn[T]] {
 
-    private val internalBuilder = TypedColumnBuilder[T](dataType)(tag)
+    private val internalBuilder = TypedColumnBuilder[T](dataType, name)(tag)
 
     override def clear(): Unit = internalBuilder.clear()
 
