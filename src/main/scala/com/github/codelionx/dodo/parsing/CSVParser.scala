@@ -38,7 +38,7 @@ class CSVParser(settings: ParsingSettings) {
     * @return the list of [[com.github.codelionx.dodo.types.TypedColumn]]s containing all data of the file
     */
   def parse(file: String): Array[TypedColumn[Any]] = {
-    val p = TypedColumnProcessor(settings.nInferringRows)
+    val p = TypedColumnProcessor(settings)
     val s = parserSettings.clone()
     s.setProcessor(p)
     val parser = new CsvParser(s)
