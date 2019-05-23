@@ -2,7 +2,7 @@ package com.github.codelionx.dodo.actors
 
 import java.time.LocalDateTime
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props}
 import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.DataHolder.{DataLoaded, LoadData}
 import com.github.codelionx.dodo.actors.ODMaster.FindODs
@@ -20,6 +20,8 @@ object SystemCoordinator {
   case object Initialize
 
   case object Finished
+
+  case object Shutdown
 
 }
 
@@ -77,6 +79,12 @@ class SystemCoordinator extends Actor with ActorLogging with DependencyChecking 
 
       // stops this actor and all direct childs
       context.stop(self)
+
+    case Shutdown =>
+      log.info("Shutdown message received, stopping all actors and system!")
+      context.children.foreach(_ ! PoisonPill)
+      context.stop(self)
+      context.system.terminate()
 
     // TODO
     case _ => log.info("Unknown message received")

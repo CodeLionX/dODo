@@ -1,6 +1,7 @@
 package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, Props}
+import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.parsing.CSVParser
 import com.github.codelionx.dodo.types.TypedColumn
 
@@ -29,6 +30,8 @@ class DataHolder extends Actor with ActorLogging {
 
   import DataHolder._
 
+  private val settings = Settings(context.system)
+
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")
@@ -42,7 +45,7 @@ class DataHolder extends Actor with ActorLogging {
 
   def uninitialized: Receive = {
     case LoadData(localFilename) =>
-      val data = CSVParser.parse(localFilename)
+      val data = CSVParser(settings.parsing).parse(localFilename)
       log.info(s"Loaded data from $localFilename. $name is ready")
       context.become(dataReady(data))
       sender ! DataLoaded
