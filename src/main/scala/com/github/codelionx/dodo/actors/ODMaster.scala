@@ -26,7 +26,9 @@ object ODMaster {
 class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: ActorRef) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
 
   import ODMaster._
-  private val workers: Seq[ActorRef] = Seq.fill(nWorkers){context.actorOf(Worker.props(resultCollector), Worker.name)}
+  private val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
+    context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
+  )
   private var reducedColumns: Set[Int] = Set.empty
   private var pendingPruningResponses = 0
 
@@ -51,6 +53,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
     case DataRef(table) =>
       if (table.length <= 1) {
         log.info("No order dependencies due to length of table")
+        systemCoordinator ! Finished
         context.stop(self)
       }
       val orderEquivalencies = Array.fill(table.length){Seq.empty[Int]}
@@ -75,6 +78,8 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         while (!(reducedColumns.contains(nextTuple._1) && reducedColumns.contains(nextTuple._2)) && columnIndexTuples.nonEmpty) {
           nextTuple = columnIndexTuples.next()
         }
+
+        log.debug(s"Scheduling task $nextTuple to worker ${sender.path.name}")
         sender ! CheckForEquivalency(nextTuple)
         pendingPruningResponses += 1
       }
@@ -108,6 +113,8 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
       if (odsToCheck.nonEmpty) {
         val (odToCheck, newQueue) = odsToCheck.dequeue
         odsToCheck = newQueue
+
+        log.debug(s"Scheduling task $odToCheck to worker ${sender.path.name}")
         sender ! CheckForOD(odToCheck, reducedColumns)
         waitingForODStatus += odToCheck
       }
