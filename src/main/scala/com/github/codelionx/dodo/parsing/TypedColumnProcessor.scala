@@ -91,15 +91,15 @@ class TypedColumnProcessor private(settings: ParsingSettings) extends AbstractRo
     // seems very fast, so no optimization necessary
     val columnIndexToName = (i: Int) => {
       var name = ""
-      var counter = i
-      while(counter > 0) {
-        val remainder = counter % 26
+      var number = i
+      while(number > 0) {
+        val remainder = number % 26
         if(remainder == 0) {
           name += "Z"
-          counter = (counter / 26) - 1
+          number = (number / 26) - 1
         } else {
           name += ('A' + remainder - 1).toChar
-          counter /= 26
+          number /= 26
         }
       }
       name.reverse
