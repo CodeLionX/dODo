@@ -1,6 +1,7 @@
 package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.actors.ResultCollector.{OCD, OD}
@@ -34,6 +35,7 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
   import Worker._
 
+  private val settings = Settings(context.system)
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")
@@ -78,7 +80,7 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
           newCandidates ++= generateODCandidates(reducedColumns, odCandidate, leftSide = false)
         }
         sender ! ODsToCheck(odCandidate, newCandidates)
-        if (foundOD) {
+        if (foundOD || !settings.ocdComparability ) {
           resultCollector ! OCD(odCandidate)
         }
       } else {
