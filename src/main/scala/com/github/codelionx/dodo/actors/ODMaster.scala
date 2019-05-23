@@ -58,7 +58,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
 
       reducedColumns = table.indices.toSet
       val constColumns = pruneConstColumns(table)
-      resultCollector ! ConstColumns(constColumns)
+      resultCollector ! ConstColumns(constColumns.map(table(_).name))
       workers.foreach(actor => actor ! DataRef(table))
       context.become(pruning(table, orderEquivalencies, columnIndexTuples))
 
@@ -91,7 +91,11 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         val equivalenceClasses = reducedColumns.foldLeft(Map.empty[Int, Seq[Int]])(
           (map, ind) => map + (ind -> orderEquivalencies(ind))
         )
-        resultCollector ! OrderEquivalencies(equivalenceClasses)
+        resultCollector ! OrderEquivalencies(
+          equivalenceClasses.map{ case (key, cols) =>
+            table(key).name -> cols.map(table(_).name)
+          }
+        )
         odsToCheck ++= generateFirstCandidates(reducedColumns)
         context.become(findingODs(table))
       }

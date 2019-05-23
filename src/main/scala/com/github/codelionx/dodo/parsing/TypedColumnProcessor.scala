@@ -91,7 +91,7 @@ class TypedColumnProcessor private(settings: ParsingSettings) extends AbstractRo
     // FIXME: deal with more than 26 columns
 //    val remainder = length % 26
 //    val times = length / 26
-    ('a' to ('a' + length).toChar)
+    ('A' to ('A' + length).toChar)
       .map(_.toString)
       .toArray
   }

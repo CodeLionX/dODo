@@ -60,18 +60,18 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
     case CheckForOD(odCandidate, reducedColumns) =>
       val ocdCandidate = (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1)
       if (checkOrderDependent(ocdCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
-        resultCollector ! OCD(odCandidate)
+        resultCollector ! OCD(substituteColumnNames(odCandidate, table))
 
         var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
 
         if (checkOrderDependent(odCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
-          resultCollector ! OD(odCandidate)
+          resultCollector ! OD(substituteColumnNames(odCandidate, table))
         } else {
           newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
         }
         val mirroredOD = odCandidate.swap
         if (checkOrderDependent(mirroredOD, table.asInstanceOf[Array[TypedColumn[_]]])) {
-          resultCollector ! OD(mirroredOD)
+          resultCollector ! OD(substituteColumnNames(mirroredOD, table))
         } else {
           newCandidates ++= generateODCandidates(reducedColumns, odCandidate, leftSide = false)
         }
@@ -82,5 +82,9 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       sender ! GetTask
 
     case _ => log.info("Unknown message received")
+  }
+
+  def substituteColumnNames(dependency: (Seq[Int], Seq[Int]), table: Array[TypedColumn[Any]]): (Seq[String], Seq[String]) = {
+    dependency._1.map(table(_).name) -> dependency._2.map(table(_).name)
   }
 }
