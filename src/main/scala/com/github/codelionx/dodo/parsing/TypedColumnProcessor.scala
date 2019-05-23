@@ -60,7 +60,7 @@ class TypedColumnProcessor private(settings: ParsingSettings) extends AbstractRo
         if(settings.parseHeader)
           context.headers()
         else
-          generateArtificialColumnNames(types.length)
+          generateSyntheticColumnNames(types.length)
 
       // initialize column arrays
       columns = Array.ofDim(types.length)
@@ -87,13 +87,24 @@ class TypedColumnProcessor private(settings: ParsingSettings) extends AbstractRo
     columnsIndex += 1
   }
 
-  private def generateArtificialColumnNames(length: Int): Array[String] = {
-    // FIXME: deal with more than 26 columns
-//    val remainder = length % 26
-//    val times = length / 26
-    ('A' to ('A' + length).toChar)
-      .map(_.toString)
-      .toArray
+  private def generateSyntheticColumnNames(length: Int): Array[String] = {
+    // seems very fast, so no optimization necessary
+    val columnIndexToName = (i: Int) => {
+      var name = ""
+      var counter = i
+      while(counter > 0) {
+        val remainder = counter % 26
+        if(remainder == 0) {
+          name += "Z"
+          counter = (counter / 26) - 1
+        } else {
+          name += ('A' + remainder - 1).toChar
+          counter /= 26
+        }
+      }
+      name.reverse
+    }
+    (1 to length).map(columnIndexToName).toArray
   }
 
   /**
