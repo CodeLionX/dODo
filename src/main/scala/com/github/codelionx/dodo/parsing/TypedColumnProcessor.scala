@@ -22,8 +22,9 @@ object TypedColumnProcessor {
 class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends AbstractRowProcessor {
 
   private object State extends Enumeration {
+
     type State = Value
-    val TypeInferring, EmptyingBuffer, Parsing = Value
+    val TypeInferring, EmptyingBuffer, Parsing, Finished = Value
   }
 
   private var state: State.State = State.TypeInferring
@@ -57,11 +58,14 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends Abstr
 
       // fill column arrays with buffered data
       untypedRowBuffer.foreach(bufferedRow => {
-        for (j <- bufferedRow.indices) {
-          columns(j).append(bufferedRow(j))
+        if (bufferedRow != null) {
+          for (j <- bufferedRow.indices) {
+            columns(j).append(bufferedRow(j))
+          }
+          columnsIndex += 1
         }
-        columnsIndex += 1
       })
+
     }
   }
 
@@ -75,7 +79,9 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends Abstr
   /**
     * Returns the columnar data parsed from the CSV file as an array of [[com.github.codelionx.dodo.types.TypedColumn]]s.
     */
-  def columnarData: Array[TypedColumn[Any]] = columns.map(_.toTypedColumn)
+  def columnarData: Array[TypedColumn[Any]] =
+    if (state == State.Finished) columns.map(_.toTypedColumn)
+    else throw new IllegalAccessException("The parsing process has not finished yet, but proc.columnarData was accessed")
 
   // from RowProcessor
   override def rowProcessed(row: Array[String], context: ParsingContext): Unit = {
@@ -93,5 +99,18 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends Abstr
       case State.Parsing =>
         parseRow(row)
     }
+  }
+
+  override def processEnded(context: ParsingContext): Unit = {
+    /* If number of type inferring rows is greater than number of records, we have to parse the buffer at the end of
+     * the parsing process with the type information collected till now.
+     * This is reflected in this method:
+     *  - the parsing process has ended (no more records)
+     *  - but we are still in the TypeInferring state
+     */
+    if (state == State.TypeInferring) {
+      runEmptyingBuffer()
+    }
+    state = State.Finished
   }
 }
