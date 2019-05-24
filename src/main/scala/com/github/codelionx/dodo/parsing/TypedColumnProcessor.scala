@@ -144,7 +144,7 @@ class TypedColumnProcessor private(settings: ParsingSettings) extends AbstractRo
      *  - but we are still in the TypeInferring state
      */
     if (state == State.TypeInferring) {
-      runEmptyingBuffer()
+      runEmptyingBuffer(context)
     }
     state = State.Finished
   }
