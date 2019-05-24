@@ -6,12 +6,22 @@ import scala.reflect.ClassTag
 
 object TypedColumnBuilder {
 
+  private val DEFAULT_COLUMN_NAME = "UNKNOWN"
+
   /**
     * Creates a new [[com.github.codelionx.dodo.types.TypedColumnBuilder]] from the `dataType`.
     *
     * @param dataType specifies the column's type
     */
-  def apply[T <: Any : ClassTag](dataType: DataType[T]): TypedColumnBuilder[T] = new TypedColumnBuilder(dataType)
+  def apply[T <: Any : ClassTag](dataType: DataType[T]): TypedColumnBuilder[T] = apply(dataType, DEFAULT_COLUMN_NAME)
+
+  /**
+    * Creates a new [[com.github.codelionx.dodo.types.TypedColumnBuilder]] from the `dataType` and `name`.
+    *
+    * @param dataType specifies the column's type
+    * @param name specifie sthe column's name
+    */
+  def apply[T <: Any : ClassTag](dataType: DataType[T], name: String): TypedColumnBuilder[T] = new TypedColumnBuilder(dataType, name)
 
   /**
     * Creates a new [[com.github.codelionx.dodo.types.TypedColumn]] from the supplied `elems` parsing them to the
@@ -20,8 +30,19 @@ object TypedColumnBuilder {
     * @param dataType specifies the column's type
     * @param elems content of the column, will be parsed to the `dataType`
     */
-  def withType[T <: Any](dataType: DataType[T])(elems: String*)(implicit ev: ClassTag[T]): TypedColumn[T] = {
-    val builder = new TypedColumnBuilder(dataType)
+  def withType[T <: Any](dataType: DataType[T])(elems: String*)(implicit ev: ClassTag[T]): TypedColumn[T] =
+    withType(dataType, DEFAULT_COLUMN_NAME)(elems: _*)
+
+  /**
+    * Creates a new [[com.github.codelionx.dodo.types.TypedColumn]] from the supplied `elems` parsing them to the
+    * supplied `dataType`.
+    *
+    * @param dataType specifies the column's type
+    * @param name specifies name of the column
+    * @param elems content of the column, will be parsed to the `dataType`
+    */
+  def withType[T <: Any](dataType: DataType[T], name: String)(elems: String*)(implicit ev: ClassTag[T]): TypedColumn[T] = {
+    val builder = new TypedColumnBuilder(dataType, name)
     builder.append(elems: _*)
     builder.toTypedColumn
   }
@@ -31,14 +52,24 @@ object TypedColumnBuilder {
     *
     * @param elems content of the column
     */
-  def from[T <: Any](elems: T*)(implicit ev: ClassTag[T]): TypedColumn[T] = {
+  def from[T <: Any](elems: T*)(implicit ev: ClassTag[T]): TypedColumn[T] =
+    from(DEFAULT_COLUMN_NAME)(elems: _*)
+
+  /**
+    * Creates a new [[com.github.codelionx.dodo.types.TypedColumn]] from the supplied `elems` with the name `name`.
+    *
+    * @param name specifies name of the column
+    * @param elems content of the column
+    */
+  def from[T <: Any](name: String)(elems: T*)(implicit ev: ClassTag[T]): TypedColumn[T] = {
     val tpe = DataType.of[T]
-    val builder = new TypedColumnBuilder[T](tpe)
+    val builder = new TypedColumnBuilder[T](tpe, name)
     elems.foreach{ elem =>
       builder += elem
     }
     builder.toTypedColumn
   }
+
 }
 
 /**
@@ -47,7 +78,7 @@ object TypedColumnBuilder {
   *
   * @param dataType defines the column's data type and how the cells are parsed
   */
-final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T]) {
+final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T], var name: String) {
 
   private val buffer: ArrayBuffer[T] = ArrayBuffer.empty
 
@@ -56,7 +87,7 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
   /**
     * Returns the [[com.github.codelionx.dodo.types.TypedColumn]] instance with all the parsed cell data.
     */
-  def toTypedColumn: TypedColumn[T] = TypedColumnImpl(dataType, buffer.toArray)
+  def toTypedColumn: TypedColumn[T] = TypedColumnImpl(dataType, name, buffer.toArray)
 
   def toArray: Array[T] = buffer.toArray
 
@@ -73,6 +104,16 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
     this
   }
 
-  private case class TypedColumnImpl(dataType: DataType[T], array: Array[T]) extends TypedColumn[T]
+  /**
+    * Set name of this column.
+    *
+    * Allows method chaining.
+    */
+  def withName(name: String): TypedColumnBuilder.this.type = {
+    this.name = name
+    this
+  }
+
+  private case class TypedColumnImpl(dataType: DataType[T], name: String, array: Array[T]) extends TypedColumn[T]
 
 }

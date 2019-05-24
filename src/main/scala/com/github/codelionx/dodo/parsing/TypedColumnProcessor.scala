@@ -1,5 +1,6 @@
 package com.github.codelionx.dodo.parsing
 
+import com.github.codelionx.dodo.Settings.ParsingSettings
 import com.github.codelionx.dodo.types.{TypedColumn, TypedColumnBuilder}
 import com.univocity.parsers.common.ParsingContext
 import com.univocity.parsers.common.processor.AbstractRowProcessor
@@ -7,7 +8,14 @@ import com.univocity.parsers.common.processor.AbstractRowProcessor
 
 object TypedColumnProcessor {
 
-  def apply(nInferringRows: Int): TypedColumnProcessor = new TypedColumnProcessor(nInferringRows)
+  /**
+    * Creates a new TypedColumnProcessor.
+    *
+    * @see [[com.github.codelionx.dodo.parsing.TypeInferrer]] for information how the data types are inferred
+    * @param settings parsing settings
+    * @return a new [[com.github.codelionx.dodo.parsing.TypedColumnProcessor]]
+    */
+  def apply(settings: ParsingSettings): TypedColumnProcessor = new TypedColumnProcessor(settings)
 
 }
 
@@ -17,9 +25,9 @@ object TypedColumnProcessor {
   * After wards all following values will be parsed to the determined data type.
   *
   * @see [[com.github.codelionx.dodo.parsing.TypeInferrer]] for information how the data types are inferred
-  * @param numberOfTypeInferringRows rows used for inferring and refining the data types for the columns
+  * @param settings parsing settings
   */
-class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends AbstractRowProcessor {
+class TypedColumnProcessor private(settings: ParsingSettings) extends AbstractRowProcessor {
 
   private object State extends Enumeration {
 
@@ -29,7 +37,7 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends Abstr
 
   private var state: State.State = State.TypeInferring
   private var columns: Array[TypedColumnBuilder[Any]] = _
-  private val untypedRowBuffer: Array[Array[String]] = Array.ofDim(numberOfTypeInferringRows)
+  private val untypedRowBuffer: Array[Array[String]] = Array.ofDim(settings.nInferringRows)
   private var inferrer: TypeInferrer = _
   private var columnsIndex: Int = 0
   private var untypedRowBufferIndex: Int = 0
@@ -45,16 +53,23 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends Abstr
     untypedRowBufferIndex += 1
   }
 
-  private def runEmptyingBuffer(): Unit = {
+  private def runEmptyingBuffer(context: ParsingContext): Unit = {
     // type inferring finished, continue with reading the buffer again and parse it to the right types
     if (untypedRowBuffer.nonEmpty) {
       val types = inferrer.columnTypes
+      val headers: Array[String] =
+        if(settings.parseHeader)
+          context.headers()
+        else
+          generateSyntheticColumnNames(types.length)
 
       // initialize column arrays
       columns = Array.ofDim(types.length)
-      types.indices.foreach(i =>
-        columns(i) = types(i).createTypedColumnBuilder
-      )
+      types.indices.foreach(i => {
+        columns(i) = types(i)
+          .createTypedColumnBuilder
+          .withName(headers(i))
+      })
 
       // fill column arrays with buffered data
       untypedRowBuffer.foreach(bufferedRow => {
@@ -76,6 +91,26 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends Abstr
     columnsIndex += 1
   }
 
+  private def generateSyntheticColumnNames(length: Int): Array[String] = {
+    // seems very fast, so no optimization necessary
+    val columnIndexToName = (i: Int) => {
+      var name = ""
+      var number = i
+      while(number > 0) {
+        val remainder = number % 26
+        if(remainder == 0) {
+          name += "Z"
+          number = (number / 26) - 1
+        } else {
+          name += ('A' + remainder - 1).toChar
+          number /= 26
+        }
+      }
+      name.reverse
+    }
+    (1 to length).map(columnIndexToName).toArray
+  }
+
   /**
     * Returns the columnar data parsed from the CSV file as an array of [[com.github.codelionx.dodo.types.TypedColumn]]s.
     */
@@ -88,11 +123,11 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends Abstr
     state match {
       case State.TypeInferring =>
         runTypeInferring(row)
-        if (untypedRowBufferIndex >= numberOfTypeInferringRows)
+        if (untypedRowBufferIndex >= settings.nInferringRows)
           state = State.EmptyingBuffer
 
       case State.EmptyingBuffer =>
-        runEmptyingBuffer()
+        runEmptyingBuffer(context)
         parseRow(row)
         state = State.Parsing
 
@@ -109,7 +144,7 @@ class TypedColumnProcessor private(numberOfTypeInferringRows: Int) extends Abstr
      *  - but we are still in the TypeInferring state
      */
     if (state == State.TypeInferring) {
-      runEmptyingBuffer()
+      runEmptyingBuffer(context)
     }
     state = State.Finished
   }

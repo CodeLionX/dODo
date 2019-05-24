@@ -12,13 +12,13 @@ object ResultCollector {
 
   def props(): Props = Props[ResultCollector]
 
-  case class ConstColumns(ccs: Seq[Int])
+  case class ConstColumns(ccs: Seq[String])
 
-  case class OrderEquivalencies(oe: Map[Int, Seq[Int]])
+  case class OrderEquivalencies(oe: Map[String, Seq[String]])
 
-  case class OD(od: (Seq[Int], Seq[Int]))
+  case class OD(od: (Seq[String], Seq[String]))
 
-  case class OCD(ocd: (Seq[Int], Seq[Int]))
+  case class OCD(ocd: (Seq[String], Seq[String]))
 
 }
 
@@ -51,17 +51,19 @@ class ResultCollector extends Actor with ActorLogging {
       write("Constant columns: " + prettyList(ccs))
 
     case OrderEquivalencies(oes) =>
-      write("Order Equivalent:")
-      oes.foreach(oe =>
-        if (oe._2.nonEmpty) {
-          write(oe._1.toString + ", " + prettyList(oe._2))
-        }
+      write(
+        s"Order equivalent: ${
+          oes
+            .filter(oe => oe._2.nonEmpty)
+            .map(oe => oe._1.toString + " ↔ " + prettyList(oe._2))
+            .mkString
+        }".stripMargin
       )
 
     case OD(od) =>
       val left = prettyList(od._1)
       val right = prettyList(od._2)
-      write(s"OD: $left => $right")
+      write(s"OD: $left ↦ $right")
       odsFound += 1
       // TODO: extract order equivalent ods
 
@@ -81,7 +83,7 @@ class ResultCollector extends Actor with ActorLogging {
     log.info(message)
   }
 
-  def prettyList(l: Seq[Int]): String = {
+  def prettyList(l: Seq[String]): String = {
     val newString: StringBuilder = new StringBuilder()
     if (l.nonEmpty) {
       newString.append(l.head)
