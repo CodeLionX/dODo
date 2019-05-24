@@ -55,7 +55,7 @@ class ResultCollector extends Actor with ActorLogging {
         s"Order equivalent: ${
           oes
             .filter(oe => oe._2.nonEmpty)
-            .map(oe => oe._1.toString + ", " + prettyList(oe._2))
+            .map(oe => oe._1.toString + " ↔ " + prettyList(oe._2))
             .mkString
         }".stripMargin
       )

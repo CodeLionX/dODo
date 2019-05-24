@@ -79,7 +79,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
           nextTuple = columnIndexTuples.next()
         }
 
-        log.debug(s"Scheduling task $nextTuple to worker ${sender.path.name}")
+        log.debug(s"Scheduling task to check equivalence of $nextTuple to worker ${sender.path.name}")
         sender ! CheckForEquivalency(nextTuple)
         pendingPruningResponses += 1
       }
@@ -114,7 +114,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         val (odToCheck, newQueue) = odsToCheck.dequeue
         odsToCheck = newQueue
 
-        log.debug(s"Scheduling task $odToCheck to worker ${sender.path.name}")
+        log.debug(s"Scheduling task to check OCD $odToCheck to worker ${sender.path.name}")
         sender ! CheckForOD(odToCheck, reducedColumns)
         waitingForODStatus += odToCheck
       }
