@@ -38,7 +38,6 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
   override def preStart(): Unit = {
     log.info(s"Starting $name")
     Reaper.watchWithDefault(self)
-    // TODO make reaper watch workers
   }
 
   override def postStop(): Unit =
@@ -132,9 +131,9 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
 
   def pruneConstColumns(table: Array[TypedColumn[Any]]): Seq[Int] = {
     val constColumns = for {
-      column <- table
+      (column, index) <- table.zipWithIndex
       if checkConstant(column)
-    } yield table.indexOf(column)
+    } yield index
 
     reducedColumns --= constColumns
     constColumns
