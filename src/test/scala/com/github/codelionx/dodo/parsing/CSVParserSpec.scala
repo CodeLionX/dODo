@@ -1,11 +1,13 @@
 package com.github.codelionx.dodo.parsing
 
 import com.github.codelionx.dodo.Settings
+import com.github.codelionx.dodo.testing.tags.DataTests
 import com.github.codelionx.dodo.types.TypedColumn
 import com.typesafe.config.ConfigFactory
 import org.scalatest.{Matchers, WordSpec}
 
 
+@DataTests
 class CSVParserSpec extends WordSpec with Matchers {
 
   val noHeader: Boolean = false
