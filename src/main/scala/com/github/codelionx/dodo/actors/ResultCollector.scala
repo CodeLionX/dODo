@@ -52,10 +52,10 @@ class ResultCollector extends Actor with ActorLogging {
 
     case OrderEquivalencies(oes) =>
       write(
-        s"Order equivalent: ${
+        s"Order equivalent: \n${
           oes
             .filter(oe => oe._2.nonEmpty)
-            .map(oe => oe._1.toString + " ↔ " + prettyList(oe._2))
+            .map(oe => oe._1.toString + " ↔ " + prettyList(oe._2) + "\n")
             .mkString
         }".stripMargin
       )
