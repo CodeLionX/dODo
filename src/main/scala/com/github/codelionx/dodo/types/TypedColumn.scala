@@ -24,7 +24,7 @@ abstract class TypedColumnBase[T <: Any](implicit ev: ClassTag[T]) {
   /**
     * Returns the backing array of this `TypedColumn`.
     */
-  def array: Array[T]
+  def array: Array[Option[T]]
 
   /**
     * Column name
@@ -44,7 +44,7 @@ trait TypedColumn[T <: Any]
     with TypedColumnSeqLike[T, TypedColumn[T]]
     with TypedColumnSorting[T, TypedColumn[T]] {
 
-  override protected def newBuilder: mutable.Builder[T, TypedColumn[T]] = new BuilderAdapter
+  override protected def newBuilder: mutable.Builder[Option[T], TypedColumn[T]] = new BuilderAdapter
 
 
   // overrides of [[java.lang.Object]]
@@ -68,7 +68,7 @@ trait TypedColumn[T <: Any]
     * Adapter class to bridge between our buffer-based [[com.github.codelionx.dodo.types.TypedColumnBuilder]] and the
     * [[scala.collection.mutable.Builder]] interface
     */
-  private final class BuilderAdapter extends mutable.ReusableBuilder[T, TypedColumn[T]] {
+  private final class BuilderAdapter extends mutable.ReusableBuilder[Option[T], TypedColumn[T]] {
 
     private val internalBuilder = TypedColumnBuilder[T](dataType, name)(tag)
 
@@ -76,7 +76,7 @@ trait TypedColumn[T <: Any]
 
     override def result(): TypedColumn[T] = internalBuilder.toTypedColumn
 
-    override def +=(elem: T): BuilderAdapter.this.type = {
+    override def +=(elem: Option[T]): BuilderAdapter.this.type = {
       internalBuilder += elem
       this
     }

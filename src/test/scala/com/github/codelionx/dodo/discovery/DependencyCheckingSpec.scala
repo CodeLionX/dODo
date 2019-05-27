@@ -50,10 +50,10 @@ class DependencyCheckingSpec extends WordSpec with Matchers {
     "find a constant column of mixed ZonedDateTime formats" in {
       val date1 = "2019-05-09T12:22:04+02:00"
       val date2 = "Thu, 9 May 2019 12:22:04 +0200"
-      val parsed1 = DateType.dateChecker(date1).dateType.parse(date1).asInstanceOf[ZonedDateTime]
-      val parsed2 = DateType.dateChecker(date2).dateType.parse(date2).asInstanceOf[ZonedDateTime]
+      val parsed1 = DateType.dateChecker(date1).dateType.parse(date1).asInstanceOf[Option[ZonedDateTime]]
+      val parsed2 = DateType.dateChecker(date2).dateType.parse(date2).asInstanceOf[Option[ZonedDateTime]]
 
-      val mixedFormatColumn = TypedColumnBuilder.from[ZonedDateTime](parsed1, parsed2)
+      val mixedFormatColumn = TypedColumnBuilder.from[ZonedDateTime](parsed1.get, parsed2.get)
       DependencyCheckingTester.checkConstant(mixedFormatColumn) shouldBe true
     }
 
