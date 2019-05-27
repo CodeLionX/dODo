@@ -38,4 +38,7 @@ before_script:
 # build script (sbt test and sbt run sampleapp.Main)
 script:
   - sbt ++$TRAVIS_SCALA_VERSION coverage test coverageReport coverageAggregate codacyCoverage
-  - sbt ++$TRAVIS_SCALA_VERSION -Dcom.github.codelionx.dodo.input-file=data/test.csv run
+  - sbt ++$TRAVIS_SCALA_VERSION \
+    -Dcom.github.codelionx.dodo.input-file=data/test.csv \
+    -Dcom.github.codelionx.dodo.runs-in-CI=true \
+    run
