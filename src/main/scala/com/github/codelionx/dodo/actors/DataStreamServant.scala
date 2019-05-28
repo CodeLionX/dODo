@@ -79,7 +79,6 @@ class DataStreamServant(data: Array[TypedColumn[Any]]) extends Actor with ActorL
 
     case GetDataOverStream =>
       log.info("Received request for data over stream")
-      source.offer(DataRefOverStream(data))
       val offerFuture: Future[QueueOfferResult] = source.offer(DataRefOverStream(data))
       sender ! StreamACK
 
