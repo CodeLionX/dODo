@@ -26,7 +26,7 @@ object TypedColumn {
       this
     }
   }
-  
+
 }
 
 
