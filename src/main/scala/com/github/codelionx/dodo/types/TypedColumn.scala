@@ -49,7 +49,7 @@ trait TypedColumn[T <: Any]
 
   // overrides of [[java.lang.Object]]
 
-  override def hashCode(): Int = Objects.hash(dataType, array.toSeq)
+  override def hashCode(): Int = Objects.hash(dataType, name, array.toSeq)
 
   override def canEqual(o: Any): Boolean = o.isInstanceOf[TypedColumn[T]]
 
