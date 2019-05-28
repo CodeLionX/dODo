@@ -47,6 +47,7 @@ class TypeInferrerSpec extends WordSpec with Matchers {
       TypeInferrer.inferType(null).shouldEqual(NullType)
       TypeInferrer.inferType("").shouldEqual(NullType)
       TypeInferrer.inferType("null").shouldEqual(NullType)
+      TypeInferrer.inferType("?").shouldEqual(NullType)
     }
   }
 }

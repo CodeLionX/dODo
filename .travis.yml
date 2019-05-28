@@ -37,7 +37,13 @@ before_script:
 
 # build script (sbt test and sbt run sampleapp.Main)
 script:
-  - sbt ++$TRAVIS_SCALA_VERSION coverage test coverageReport coverageAggregate codacyCoverage
+  # exclude tests tagged with DataTest from the test run
+  - sbt ++$TRAVIS_SCALA_VERSION \
+      coverage \
+      'testOnly -- -l "com.github.codelionx.dodo.testing.tags.DataTests"' \
+      coverageReport \
+      coverageAggregate \
+      codacyCoverage
   - sbt ++$TRAVIS_SCALA_VERSION
     -Dcom.github.codelionx.dodo.input-file=data/test.csv
     -Dcom.github.codelionx.dodo.runs-in-CI=true
