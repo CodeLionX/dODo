@@ -18,7 +18,7 @@ class ODDetectionSpec extends TestKit(ActorSystem("ODDetectionSpec"))
       val probe = TestProbe()
       val systemCoord = system.actorOf(Props(new SystemCoordinator() {
         override def resultCollector: ActorRef = probe.ref
-        override def localFileName: String = "testData/test.csv"
+        override def localFilename: String = "testData/test.csv"
       }))
       systemCoord ! Initialize
       // Constant columns
@@ -29,7 +29,7 @@ class ODDetectionSpec extends TestKit(ActorSystem("ODDetectionSpec"))
         "B" -> Seq(),
         "C" -> Seq(),
         "D" -> Seq("E"))))
-      // OCDs
+      // OCDs & ODs
       var ocds: Set[(Seq[String], Seq[String])] = Set.empty
       var ods: Set[(Seq[String], Seq[String])] = Set.empty
       probe.receiveWhile(500 millis) {
