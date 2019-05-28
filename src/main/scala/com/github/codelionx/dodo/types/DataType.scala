@@ -1,7 +1,6 @@
 package com.github.codelionx.dodo.types
 
 import java.time._
-import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAccessor
 
 import scala.reflect.ClassTag
@@ -62,7 +61,7 @@ object DataType {
   *      [[com.github.codelionx.dodo.types.LocalDateType]]
   * @tparam T underlying (primitive) type
   */
-sealed trait DataType[T <: Any] extends Ordered[DataType[_]] {
+sealed trait DataType[T <: Any] extends Ordered[DataType[_]] with Serializable {
 
   /**
     * Returns the underlying type's [[scala.reflect.ClassTag]]. Can be used for pattern matching or using the type
