@@ -49,8 +49,6 @@ class Settings(config: Config) extends Extension {
 
   val ocdComparability: Boolean = config.getBoolean(s"$namespace.ocd-comparability")
 
-  val runsInCI: Boolean = config.getBoolean(s"$namespace.runs-in-CI")
-
   val parsing: ParsingSettings = new ParsingSettings(config, namespace)
 
 }
