@@ -48,10 +48,9 @@
 - eher auf eine Sache konzentrieren und die anderen Dinge als gegeben sehen, Systemkomplettbeschreibung wird erst in der Ausarbeitung gehen
 - Zeitliche Aufteilung zwischen den Personen sollte ausgeglichen sein
 
-
-
 ## Next Tasks
 
 | Who?  | Until when?   | What? |
 | :---: | :------------ | :---- |
-|  |  |  |
+| Jul |  | Batch work and results for workers inside the actor systems to reduce message load on master actor |
+| Sebi |  | Side-channel for data set exchange between actor systems (using Netty) |
