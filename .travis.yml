@@ -44,4 +44,7 @@ script:
       coverageReport \
       coverageAggregate \
       codacyCoverage
-  - sbt ++$TRAVIS_SCALA_VERSION -Dcom.github.codelionx.dodo.input-file=data/test.csv run
+  - sbt ++$TRAVIS_SCALA_VERSION
+    -Dcom.github.codelionx.dodo.input-file=data/test.csv
+    -Dcom.github.codelionx.dodo.runs-in-CI=true
+    run
