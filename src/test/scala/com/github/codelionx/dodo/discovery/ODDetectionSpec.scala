@@ -7,6 +7,7 @@ import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
 import com.github.codelionx.dodo.actors.SystemCoordinator
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 import scala.concurrent.duration._
+import scala.language.postfixOps
 
 class ODDetectionSpec extends TestKit(ActorSystem("ODDetectionSpec"))
   with ImplicitSender
@@ -32,7 +33,7 @@ class ODDetectionSpec extends TestKit(ActorSystem("ODDetectionSpec"))
       // OCDs & ODs
       var ocds: Set[(Seq[String], Seq[String])] = Set.empty
       var ods: Set[(Seq[String], Seq[String])] = Set.empty
-      probe.receiveWhile(500 millis) {
+      probe.receiveWhile(max = 500 millis) {
         case OCD(ocd) => ocds += ocd
         case OD(od) => ods += od
       }
