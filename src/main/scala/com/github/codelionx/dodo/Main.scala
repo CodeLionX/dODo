@@ -33,10 +33,12 @@ object Main {
 
       systemCoordinator ! Initialize
 
-      // to allow using this Main in CI: shutdown the system after 60 seconds
-      system.scheduler.scheduleOnce(20 seconds, systemCoordinator, Shutdown)(
-        system.dispatcher, akka.actor.Actor.noSender
-      )
+      // to allow using this Main in CI: shutdown the system after 40 seconds
+      if(Settings(system).runsInCI) {
+        system.scheduler.scheduleOnce(40 seconds, systemCoordinator, Shutdown)(
+          system.dispatcher, akka.actor.Actor.noSender
+        )
+      }
     }
 
   }
