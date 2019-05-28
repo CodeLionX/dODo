@@ -300,7 +300,8 @@ case object NullType extends DataType[Null] {
   /**
     * Checks if the value is a `null` value.
     */
-  def isNull(value: String): Boolean = value == null || value.isEmpty || value.equalsIgnoreCase("null")
+  def isNull(value: String): Boolean =
+    value == null || value.isEmpty || value.equalsIgnoreCase("null") || value.equalsIgnoreCase("?")
 
   override def parse(value: String): Option[Null] = None
 

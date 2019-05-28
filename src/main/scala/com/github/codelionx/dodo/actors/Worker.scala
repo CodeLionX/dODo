@@ -80,7 +80,7 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
           newCandidates ++= generateODCandidates(reducedColumns, odCandidate, leftSide = false)
         }
         sender ! ODsToCheck(odCandidate, newCandidates)
-        if (foundOD || !settings.ocdComparability ) {
+        if (!foundOD || !settings.ocdComparability ) {
           resultCollector ! OCD(substituteColumnNames(odCandidate, table))
         }
       } else {
