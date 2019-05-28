@@ -35,7 +35,6 @@ class SystemCoordinator extends Actor with ActorLogging with DependencyChecking 
   val nWorkers = settings.workers
   def resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
   val dataHolder: ActorRef = context.actorOf(DataHolder.props(), DataHolder.name)
-  def localFilename: String = settings.inputFilePath
   val odMaster: ActorRef = context.actorOf(ODMaster.props(nWorkers, resultCollector, self), ODMaster.name)
 
   var startTime: LocalDateTime = _
@@ -53,7 +52,7 @@ class SystemCoordinator extends Actor with ActorLogging with DependencyChecking 
   override def receive: Receive = {
     case Initialize =>
       log.info("Preparing for OD discovery: loading data")
-      dataHolder ! LoadData(localFilename)
+      dataHolder ! LoadData(settings.inputFilePath)
 
     case DataLoaded =>
       log.info("Starting master and passing ref to data holder")

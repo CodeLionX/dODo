@@ -19,7 +19,6 @@ class ODDetectionSpec extends TestKit(ActorSystem("ODDetectionSpec"))
       val probe = TestProbe()
       val systemCoord = system.actorOf(Props(new SystemCoordinator() {
         override def resultCollector: ActorRef = probe.ref
-        override def localFilename: String = "testData/test.csv"
       }))
       systemCoord ! Initialize
       // Constant columns

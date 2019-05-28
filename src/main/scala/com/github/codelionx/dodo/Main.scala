@@ -32,13 +32,6 @@ object Main {
       val systemCoordinator = system.actorOf(SystemCoordinator.props(), SystemCoordinator.name)
 
       systemCoordinator ! Initialize
-
-      // to allow using this Main in CI: shutdown the system after 40 seconds
-      if(Settings(system).runsInCI) {
-        system.scheduler.scheduleOnce(40 seconds, systemCoordinator, Shutdown)(
-          system.dispatcher, akka.actor.Actor.noSender
-        )
-      }
     }
 
   }

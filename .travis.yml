@@ -35,7 +35,6 @@ script:
   # exclude tests tagged with DataTest from the test run
   - sbt ++$TRAVIS_SCALA_VERSION \
       coverage \
-      -Dcom.github.codelionx.dodo.input-file=testData/test.csv\
       'testOnly -- -l "com.github.codelionx.dodo.testing.tags.DataTests"' \
       coverageReport \
       coverageAggregate \
