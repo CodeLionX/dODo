@@ -11,46 +11,48 @@
 
 ## Input from Thorsten
 
-- Kafka Seminar
-  - intermidiate presentation kafka, Mittwoch, 12.06. 11:00 Uhr
-  - final presentation kafka, Mittwoch, 17.07. 11:00 Uhr
-- Naumann hat im Web Table Seminar über Vorträge erzählt, was ihm wichtig ist: [VL-Seite](https://hpi.de/naumann/teaching/teaching/ss-19/processing-web-tables.html)
-- Folien von Thorsten (von 29.05) sind auch interessant für unser seminar
+- we are invited to the Kafka Seminar presentations
+  - intermediate presentation: Wednesday, 12.06. 11:00 Uhr
+  - final presentation:, Wednesday 17.07. 11:00 Uhr
+- Prof. Naumann presented in the Web Table Seminar, what he thinks, that is important for presentations: [Slides](https://hpi.de/fileadmin/user_upload/fachgebiete/naumann/lehre/SS2019/PWT/Literature_and_Presentation.pdf)
+- slides from Thorsten (29.05) about research work could also be interesting for us (_slides link tbd_)
 
-## Feedback
+## Feedback to our approach
 
-- was passiert, wenn 3 benachbarte Nodes failen?
-  - sanity check (3 benachbarte)? --> neustart
-  - wir unterstützen das nicht
-- marker für "candidate doesn't hold" und Kandidaten später generieren
-  - bei speicherproblemen
-  - weniger Daten zu synchronisieren
-- Option für `null`-handling ist ok (wenn man Algorithmus optimieren wollte, dann müsste man das betrachten)
+- what happens, if three neighbouring nodes fail at the same time?
+  - sanity check running in all nodes (checking the above condition)? --> restart the whole system
+  - we do not consider this failure type --> manual restart needed
+- we could improve the algorithm's state handling by just storing a marker for "candidate doesn't hold" and generate the following candidates on-demand later on
+  - could improve memory usage
+  - leads to less data being stored in the replicas and needed to be send across the network (less synchronization data)
+- Option for `null`-handling is OK (if we want to optimize the algorithm, we should consider this; this is not the seminar goal)
 
-## Presentation
+## Intermediate Presentation
 
-- Wichtig: schöne Geschichte, verständlich
-- Nur kurze Zeit: 15min
-- Ort: F2.10
-- Englisch ist zu empfehlen
-- Folien
-  - immer auf Englisch
+- important: sound story, comprehensible
+- consider the short time: 15min
+- place: F2.10
+- Thorsten suggest speaking englisch
+- slides
+  - always in english
   - HPI template
-  - **Namen!**
-  - kaum Text
-  - Diagramme
-- Einführung:
-  - Thema, was versuchen wir zu lösen?
-  - davon ausgehen, das jmd. dabei ist, der nichts davon weiß
-  - Akka?, Actor Programming? jedes Fachwort kurz beschreiben (was ist der Kern?)
-- nicht auf "Thank you" enden: Summary slide, die Diskussion anstößt
-- Voraussetzungen / Setting vorher klären: Wie wichtig sind uns fault-tolerance / reliability, ...
-- eher auf eine Sache konzentrieren und die anderen Dinge als gegeben sehen, Systemkomplettbeschreibung wird erst in der Ausarbeitung gehen
-- Zeitliche Aufteilung zwischen den Personen sollte ausgeglichen sein
+  - **Do not forget our names!**
+  - few text
+  - schematic drawings and diagrams
+- introduction:
+  - topic, what is our goal?
+  - always assume, that somebody has no idea of it:
+    what is Akka, actor programming, ...?
+    explain all technical terms shortly (what is the core idea?)
+- do not end on "Thank you"-slide: summary slide, which initiates a discussion
+- clarify requirements / setting at the beginning: How important is fault-tolerance / reliability, ...?
+- focus on one main contribution and take the other topics as a given;
+  a complete explanation of the system is only possible in the final report
+- balanced speaking times for both team members (disregarding, which topic is important in our opinion)
 
 ## Next Tasks
 
 | Who?  | Until when?   | What? |
 | :---: | :------------ | :---- |
-| Jul |  | Batch work and results for workers inside the actor systems to reduce message load on master actor |
-| Sebi |  | Side-channel for data set exchange between actor systems (using Netty) |
+| Jul | 01.06. | Batch work and results for workers inside the actor systems to reduce message load on master actor |
+| Sebi | 01.06. | Side-channel for data set exchange between actor systems (using Netty) |
