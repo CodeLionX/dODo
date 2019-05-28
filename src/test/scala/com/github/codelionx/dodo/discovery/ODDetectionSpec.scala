@@ -14,21 +14,27 @@ class ODDetectionSpec extends TestKit(ActorSystem("ODDetectionSpec"))
   with WordSpecLike
   with Matchers
   with BeforeAndAfterAll {
+
   "The system" must {
+
     "find the right results" in {
       val probe = TestProbe()
       val systemCoord = system.actorOf(Props(new SystemCoordinator() {
         override def resultCollector: ActorRef = probe.ref
       }))
       systemCoord ! Initialize
+
       // Constant columns
       probe.expectMsg(ConstColumns(Seq("F")))
+
       // Order equivalencies
       probe.expectMsg(OrderEquivalencies(Map(
         "A" -> Seq(),
         "B" -> Seq(),
         "C" -> Seq(),
-        "D" -> Seq("E"))))
+        "D" -> Seq("E")
+      )))
+
       // OCDs & ODs
       var ocds: Set[(Seq[String], Seq[String])] = Set.empty
       var ods: Set[(Seq[String], Seq[String])] = Set.empty
@@ -65,9 +71,8 @@ class ODDetectionSpec extends TestKit(ActorSystem("ODDetectionSpec"))
         (Seq("B", "C"), Seq("D", "A"))
       )
 
-      val emptySet: Set[(Seq[String], Seq[String])] = Set.empty
-      ocds -- expectedOCDs shouldBe emptySet
-      ods -- expectedODs shouldBe emptySet
+      ocds -- expectedOCDs shouldBe empty
+      ods -- expectedODs shouldBe empty
     }
   }
 }
