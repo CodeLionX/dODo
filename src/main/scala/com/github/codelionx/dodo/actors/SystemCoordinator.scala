@@ -4,7 +4,7 @@ import java.time.LocalDateTime
 
 import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props}
 import com.github.codelionx.dodo.Settings
-import com.github.codelionx.dodo.actors.DataHolder.{DataLoaded, LoadData}
+import com.github.codelionx.dodo.actors.DataHolder.{DataLoaded, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ODMaster.FindODs
 import com.github.codelionx.dodo.discovery.DependencyChecking
 
@@ -52,7 +52,7 @@ class SystemCoordinator extends Actor with ActorLogging with DependencyChecking 
   override def receive: Receive = {
     case Initialize =>
       log.info("Preparing for OD discovery: loading data")
-      dataHolder ! LoadData(settings.inputFilePath)
+      dataHolder ! LoadDataFromDisk(settings.inputFilePath)
 
     case DataLoaded =>
       log.info("Starting master and passing ref to data holder")
