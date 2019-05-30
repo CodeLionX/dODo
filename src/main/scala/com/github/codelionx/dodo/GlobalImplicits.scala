@@ -14,6 +14,27 @@ object GlobalImplicits {
           |===============================
           |${ta.map(col => col.toString).mkString("\n")}
           |""".stripMargin
+
+    def prettyPrintAsTable(limit: Int = 20): String = {
+      val headerNames = ta.map(col => s"${col.name}[${col.dataType}]")
+      val header = headerNames.mkString("  ")
+      val lengthMapping = headerNames.map(_.length)
+      val data = ta(0).indices.take(limit).map(index =>
+        ta.map(col =>
+          // noinspection ScalaMalformedFormatString
+          s"%${lengthMapping(ta.indexOf(col))}s".format(col(index))
+        ).mkString("  ")
+      ).mkString("\n")
+
+      s"""|Relation
+          |${"=" * header.length}
+          |$header
+          |${"-" * header.length}
+          |$data
+          |${"-" * header.length}
+          | ($limit of ${ta(0).length} rows shown)
+          |""".stripMargin
+    }
   }
 
   /**
