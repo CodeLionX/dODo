@@ -1,15 +1,14 @@
-package com.github.codelionx.dodo.actors
+package com.github.codelionx.dodo.sidechannel
+
 
 import akka.actor.Status.Failure
 import akka.actor.{Actor, ActorLogging, Props}
 import akka.pattern.pipe
-import akka.serialization.SerializationExtension
+import akka.stream.ActorMaterializer
 import akka.stream.QueueOfferResult.{Dropped, Enqueued, QueueClosed}
+import akka.stream.scaladsl.SourceQueueWithComplete
 import akka.stream.scaladsl.Tcp.IncomingConnection
-import akka.stream.scaladsl.{Flow, Keep, Sink, Source, SourceQueueWithComplete}
-import akka.stream.{ActorMaterializer, OverflowStrategy}
-import akka.util.ByteString
-import com.github.codelionx.dodo.actors.DataStreamServant._
+import com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol._
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.concurrent.duration._
@@ -20,56 +19,37 @@ object DataStreamServant {
 
   private final val MAXIMUM_NUMBER_OF_RETRIES = 3
 
-  def props(data: Array[TypedColumn[Any]], connection: IncomingConnection): Props = Props(new DataStreamServant(data, connection))
-
-  case object GetDataOverStream
-
-  case class DataOverStream(data: Array[TypedColumn[Any]])
-
-  case object StreamInit
-
-  case object StreamACK
-
-  case object StreamComplete
+  def props(data: Array[TypedColumn[Any]], connection: IncomingConnection): Props =
+    Props(new DataStreamServant(data, connection))
 
 }
 
 
 class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConnection) extends Actor with ActorLogging {
 
-  implicit private val mat: ActorMaterializer = ActorMaterializer()
-  private val serialization = SerializationExtension(context.system)
+  import DataStreamServant._
 
   ////////////// write test message in bytes into file `out`
+  //  import akka.serialization.SerializationExtension
+  //  import java.io.FileOutputStream
   //  val writer = new FileOutputStream("out")
+  //  val serialization = SerializationExtension(context.system)
   //  writer.write(serialization.serialize(GetDataOverStream).get)
   //  writer.close()
   //////////////
 
-  private val actorConnector = Flow.fromSinkAndSourceMat(
-    Sink.actorRefWithAck[GetDataOverStream.type](self, StreamInit, StreamACK, StreamComplete),
-    Source.queue[DataOverStream](1, OverflowStrategy.backpressure)
-      .map(serialization.serialize)
-      .map {
-        case scala.util.Success(msg) => ByteString.fromArray(msg)
-        case scala.util.Failure(f) => throw f
-      }
-  )(Keep.right)
 
-  private val handler = Flow[ByteString]
-    // .reduce(_ ++ _)
-    .map(bytes => serialization.deserialize(bytes.toArray, GetDataOverStream.getClass))
-    .map {
-      case scala.util.Success(msg) => msg
-      case scala.util.Failure(f) => throw new RuntimeException("Deserialization of message failed", f)
-    }
-    .viaMat(actorConnector)(Keep.right)
+  implicit private val mat: ActorMaterializer = ActorMaterializer()
 
+  private val actorConnector = ActorStreamConnector.withQueueSource[GetDataOverStream.type, DataOverStream](
+    self,
+    GetDataOverStream.getClass
+  )(context.system)
 
-  val sourceQueue: SourceQueueWithComplete[DataOverStream] = connection.handleWith(handler)
+  val sourceQueue: SourceQueueWithComplete[DataOverStream] = connection.handleWith(actorConnector)
   log.info(s"DataStreamServant for connection from ${connection.remoteAddress} ready")
 
-  private def offerData(source: SourceQueueWithComplete[DataStreamServant.DataOverStream], data: DataOverStream): Unit = {
+  private def offerData(source: SourceQueueWithComplete[DataOverStream], data: DataOverStream): Unit = {
     import context.dispatcher
     source.offer(data) pipeTo self
   }
@@ -88,10 +68,6 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
     case Failure(cause) =>
       log.error(s"Error processing incoming request: $cause, ${cause.getCause}")
       sourceQueue.fail(cause)
-      context.stop(self)
-
-    case msg =>
-      log.error(s"Received unknown request: $msg")
       context.stop(self)
   }
 
