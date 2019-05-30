@@ -7,25 +7,24 @@ import akka.serialization.SerializationExtension
 import akka.stream.QueueOfferResult.{Dropped, Enqueued, QueueClosed}
 import akka.stream.scaladsl.Tcp.IncomingConnection
 import akka.stream.scaladsl.{Flow, Keep, Sink, Source, SourceQueueWithComplete}
-import akka.stream.{ActorMaterializer, OverflowStrategy, QueueOfferResult}
+import akka.stream.{ActorMaterializer, OverflowStrategy}
 import akka.util.ByteString
 import com.github.codelionx.dodo.actors.DataStreamServant._
 import com.github.codelionx.dodo.types.TypedColumn
 
-import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
 
 object DataStreamServant {
 
-  def props(data: Array[TypedColumn[Any]]): Props = Props(new DataStreamServant(data))
+  private final val MAXIMUM_NUMBER_OF_RETRIES = 3
 
-  case class HandleConnection(con: IncomingConnection)
+  def props(data: Array[TypedColumn[Any]], connection: IncomingConnection): Props = Props(new DataStreamServant(data, connection))
 
   case object GetDataOverStream
 
-  case class DataRefOverStream(data: Array[TypedColumn[Any]])
+  case class DataOverStream(data: Array[TypedColumn[Any]])
 
   case object StreamInit
 
@@ -36,7 +35,7 @@ object DataStreamServant {
 }
 
 
-class DataStreamServant(data: Array[TypedColumn[Any]]) extends Actor with ActorLogging {
+class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConnection) extends Actor with ActorLogging {
 
   implicit private val mat: ActorMaterializer = ActorMaterializer()
   private val serialization = SerializationExtension(context.system)
@@ -49,7 +48,7 @@ class DataStreamServant(data: Array[TypedColumn[Any]]) extends Actor with ActorL
 
   private val actorConnector = Flow.fromSinkAndSourceMat(
     Sink.actorRefWithAck[GetDataOverStream.type](self, StreamInit, StreamACK, StreamComplete),
-    Source.queue[DataRefOverStream](1, OverflowStrategy.backpressure)
+    Source.queue[DataOverStream](1, OverflowStrategy.backpressure)
       .map(serialization.serialize)
       .map {
         case scala.util.Success(msg) => ByteString.fromArray(msg)
@@ -58,75 +57,77 @@ class DataStreamServant(data: Array[TypedColumn[Any]]) extends Actor with ActorL
   )(Keep.right)
 
   private val handler = Flow[ByteString]
+    // .reduce(_ ++ _)
     .map(bytes => serialization.deserialize(bytes.toArray, GetDataOverStream.getClass))
     .map {
       case scala.util.Success(msg) => msg
-      case scala.util.Failure(f) => throw f
+      case scala.util.Failure(f) => throw new RuntimeException("Deserialization of message failed", f)
     }
     .viaMat(actorConnector)(Keep.right)
 
-  override def receive: Receive = {
-    case HandleConnection(connection) =>
-      val sourceQueue = connection.handleWith(handler)
-      context.become(streamRequest(sourceQueue))
+
+  val sourceQueue: SourceQueueWithComplete[DataOverStream] = connection.handleWith(handler)
+  log.info(s"DataStreamServant for connection from ${connection.remoteAddress} ready")
+
+  private def offerData(source: SourceQueueWithComplete[DataStreamServant.DataOverStream], data: DataOverStream): Unit = {
+    import context.dispatcher
+    source.offer(data) pipeTo self
   }
 
-  def streamRequest(source: SourceQueueWithComplete[DataStreamServant.DataRefOverStream]): Receive = {
+  override def receive: Receive = {
 
     case StreamInit =>
-      log.info("Stream initialized")
       sender ! StreamACK
 
     case GetDataOverStream =>
-      log.info("Received request for data over stream")
-      val offerFuture: Future[QueueOfferResult] = source.offer(DataRefOverStream(data))
+      log.debug("Received request for data over stream")
+      offerData(sourceQueue, DataOverStream(data))
       sender ! StreamACK
+      context.become(handleEnqueing())
 
-      import context.dispatcher
-      offerFuture pipeTo self
-      context.become(handleEnqueing(source))
-
-    case Failure(f) =>
-      log.error(s"Error processing incoming request: $f")
-      source.fail(f)
+    case Failure(cause) =>
+      log.error(s"Error processing incoming request: $cause, ${cause.getCause}")
+      sourceQueue.fail(cause)
+      context.stop(self)
 
     case msg =>
       log.error(s"Received unknown request: $msg")
-      source.fail(new RuntimeException("Unknown request"))
-      context.become(waitingForClose())
+      context.stop(self)
   }
 
-  def handleEnqueing(source: SourceQueueWithComplete[DataStreamServant.DataRefOverStream]): Receive = {
+  def handleEnqueing(retries: Int = MAXIMUM_NUMBER_OF_RETRIES): Receive = {
 
     case Enqueued =>
-      log.info("Data was send")
-      source.complete()
-      context.become(waitingForClose())
+      sourceQueue.complete()
+      context.become(waitingForClose)
 
     case QueueClosed =>
-      log.info("Stream closed")
+      log.warning("Stream closed prematurely")
       context.stop(self)
 
     case Failure(cause) =>
       log.error(s"Streaming failed to deliver data, because $cause")
-      source.fail(cause)
-    //      context.stop(self)
+      context.stop(self)
 
-    case Dropped =>
-      log.info("Data was dropped, trying again")
+    case Dropped if retries > 0 =>
+      log.warning(s"Enqueued data message was dropped, trying again" +
+        s"(${3 - retries + 1} / $MAXIMUM_NUMBER_OF_RETRIES retries)")
+
       context.system.scheduler.scheduleOnce(1 second) {
-        val offerFuture: Future[QueueOfferResult] = source.offer(DataRefOverStream(data))
-        import context.dispatcher
-        offerFuture pipeTo self
-        context.become(handleEnqueing(source))
+        offerData(sourceQueue, DataOverStream(data))
+        context.become(handleEnqueing(retries - 1))
       }(scala.concurrent.ExecutionContext.Implicits.global)
 
+    case Dropped =>
+      sourceQueue.fail(new RuntimeException(s"all $MAXIMUM_NUMBER_OF_RETRIES retries failed!"))
+      log.error(s"Could not send data after $MAXIMUM_NUMBER_OF_RETRIES retries")
+      context.stop(self)
   }
 
-  def waitingForClose(): Receive = {
+  def waitingForClose: Receive = {
 
     case StreamComplete =>
-      log.info("Stream completed! Stopping servant")
+      log.info("Data was streamed! Stopping servant")
       sender ! StreamACK
       context.stop(self)
   }
