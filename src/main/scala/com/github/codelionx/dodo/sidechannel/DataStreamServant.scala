@@ -17,7 +17,7 @@ import scala.language.postfixOps
 
 object DataStreamServant {
 
-  private final val MAXIMUM_NUMBER_OF_RETRIES = 3
+  final val MAXIMUM_NUMBER_OF_RETRIES = 3
 
   def props(data: Array[TypedColumn[Any]], connection: IncomingConnection): Props =
     Props(new DataStreamServant(data, connection))
@@ -54,6 +54,8 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
     source.offer(data) pipeTo self
   }
 
+  override def postStop(): Unit = log.info(s"DataStreamServant for connection from ${connection.remoteAddress} stopped")
+
   override def receive: Receive = {
 
     case StreamInit =>
@@ -68,6 +70,10 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
     case Failure(cause) =>
       log.error(s"Error processing incoming request: $cause, ${cause.getCause}")
       sourceQueue.fail(cause)
+      context.stop(self)
+
+    case StreamComplete =>
+      sender ! StreamACK
       context.stop(self)
   }
 
@@ -97,6 +103,11 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
     case Dropped =>
       sourceQueue.fail(new RuntimeException(s"all $MAXIMUM_NUMBER_OF_RETRIES retries failed!"))
       log.error(s"Could not send data after $MAXIMUM_NUMBER_OF_RETRIES retries")
+      context.stop(self)
+
+    case StreamComplete =>
+      log.info("Stream closed. Stopping servant")
+      sender ! StreamACK
       context.stop(self)
   }
 
