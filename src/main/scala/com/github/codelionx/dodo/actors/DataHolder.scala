@@ -5,7 +5,7 @@ import java.net.InetSocketAddress
 import akka.actor.Status.Failure
 import akka.actor.{Actor, ActorLogging, ActorRef, ActorSelection, Props}
 import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.{Sink, Tcp}
+import akka.stream.scaladsl.Tcp
 import akka.stream.scaladsl.Tcp.{IncomingConnection, OutgoingConnection}
 import com.github.codelionx.dodo.GlobalImplicits._
 import com.github.codelionx.dodo.Settings
@@ -28,16 +28,19 @@ object DataHolder {
 
   def props(publicHostname: String): Props = Props(new DataHolder(publicHostname))
 
+  // load data commands and Ack messages
   case class LoadDataFromDisk(localFilename: String)
 
   case class FetchDataFrom(otherDataHolder: ActorSelection)
 
   case object DataLoaded
 
+  // sidechannel address request-response pair
   case object GetSidechannelAddress extends Serializable
 
   case class SidechannelAddress(address: InetSocketAddress) extends Serializable
 
+  // data ref messages
   /**
     * Message to request the data reference. It is returned as [[com.github.codelionx.dodo.actors.DataHolder.DataRef]]
     */
@@ -58,10 +61,11 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
   private val settings = Settings(context.system)
 
   private def openSidechannel(data: Array[TypedColumn[Any]]): Int = {
-    implicit val mat: ActorMaterializer = ActorMaterializer()(context)
+    implicit val mat: ActorMaterializer = ActorMaterializer()
 
     val handler: IncomingConnection => Unit = connection => {
       log.info(s"Received connection from ${connection.remoteAddress}")
+      // handle incoming requests in own actor
       context.actorOf(DataStreamServant.props(data, connection), s"streamServant-${r.nextInt()}")
     }
 
@@ -112,10 +116,10 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
 
     case LoadDataFromDisk(localFilename) =>
       val data = CSVParser(settings.parsing).parse(localFilename)
+      val port = openSidechannel(data)
+
       log.info(s"Loaded data from $localFilename. $name is ready")
       sender ! DataLoaded
-
-      val port = openSidechannel(data)
       context.become(dataReady(data, port))
 
     case FetchDataFrom(otherDataHolder) =>
@@ -152,7 +156,7 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
       )(scala.concurrent.ExecutionContext.Implicits.global)
       context.become(uninitialized)
 
-    case GetDataRef | GetSidechannelAddress=>
+    case GetDataRef | GetSidechannelAddress =>
       log.warning(s"Request to serve data from uninitialized $name")
       sender ! DataNotReady
   }
@@ -162,17 +166,18 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
     case StreamComplete =>
       log.info("Stream completed!")
       sender ! StreamACK
-      originalSender ! DataLoaded
 
       val port = openSidechannel(data)
+      originalSender ! DataLoaded
       context.become(dataReady(data, port))
 
-    case GetDataRef| GetSidechannelAddress =>
+    case GetDataRef | GetSidechannelAddress =>
       log.warning(s"Request to serve data from uninitialized $name")
       sender ! DataNotReady
   }
 
   def dataReady(relation: Array[TypedColumn[Any]], boundPort: Int): Receive = {
+
     case LoadDataFromDisk(_) =>
       sender ! DataLoaded
 
