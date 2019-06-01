@@ -61,4 +61,29 @@ class DataTypeSpec extends WordSpec with Matchers {
       }
     }
   }
+
+  "The StringType" should {
+    val dt = DataType.of[String]
+
+    "parse nulls correctly" when {
+
+      def shouldParseToNone(value: String): Unit = {
+        s"the value is `${if(value == null) "literal<null>" else value}`" in {
+          val nullValue = dt.parse(value)
+          nullValue shouldBe None
+        }
+      }
+
+      Seq("null", "?", "", null).foreach(value =>
+        shouldParseToNone(value)
+      )
+    }
+
+    "parse correct strings to Some" in {
+      val value = "`!value1<$2²#+."
+      val parsed = dt.parse(value)
+
+      parsed shouldBe Some(value)
+    }
+  }
 }

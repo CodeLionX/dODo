@@ -9,8 +9,8 @@ trait TypedColumnSorting[T, +Repr] {
   /**
     * Sorts this column zipped with the array indices according to the ordering defined in the data type.
     */
-  def sortedWithOwnIndices: Array[(T, Int)] = {
-    implicit val tOrdering: Ordering[T] = dataType.ordering
+  def sortedWithOwnIndices: Array[(Option[T], Int)] = {
+    implicit val tOrdering: Ordering[Option[T]] = dataType.ordering
     val withIndices = array.zipWithIndex
     withIndices.sorted
   }
@@ -26,7 +26,7 @@ trait TypedColumnSorting[T, +Repr] {
     * Sorts this column based on the ordering defined in the data type.
     */
   def sorted: Repr = {
-    implicit val tOrdering: Ordering[T] = dataType.ordering
+    implicit val tOrdering: Ordering[Option[T]] = dataType.ordering
     val sorted = array.sorted
     val builder = newBuilder
 
@@ -43,5 +43,5 @@ trait TypedColumnSorting[T, +Repr] {
     builder.result()
   }
 
-  protected def newBuilder: mutable.Builder[T, Repr]
+  protected def newBuilder: mutable.Builder[Option[T], Repr]
 }

@@ -64,7 +64,7 @@ trait DependencyChecking extends IndexedOrdering {
   private def checkTupleOrdering(y: Seq[Int], table: Array[TypedColumn[_ <: Any]], index1: Int, index2: Int): Int = {
     for (columnIndex <- y) {
       val column = table(columnIndex)
-      val ordering = column.dataType.ordering.asInstanceOf[Ordering[Any]]
+      val ordering = column.dataType.ordering.asInstanceOf[Ordering[Option[Any]]]
 
       val value1 = column(index1)
       val value2 = column(index2)

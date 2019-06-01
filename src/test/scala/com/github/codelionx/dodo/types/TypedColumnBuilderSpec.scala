@@ -25,7 +25,7 @@ class TypedColumnBuilderSpec extends WordSpec with Matchers {
 
       // check contents
       longBuilderResult.dataType shouldEqual DoubleType
-      longBuilderResult.array.toSeq shouldEqual columnValues
+      longBuilderResult.array.toSeq shouldEqual columnValues.map(Some(_))
     }
   }
 

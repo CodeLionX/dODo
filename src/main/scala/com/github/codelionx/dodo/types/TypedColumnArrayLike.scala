@@ -17,7 +17,7 @@ trait TypedColumnArrayLike[T] {
     * @return the element at the given index
     * @throws ArrayIndexOutOfBoundsException if `i < 0` or `length <= i`
     */
-  def apply(i: Int): T = array.apply(i)
+  def apply(i: Int): Option[T] = array.apply(i)
 
   /**
     * Updates the element at given i.
@@ -29,7 +29,7 @@ trait TypedColumnArrayLike[T] {
     * @param x the value to be written at index `i`
     * @throws ArrayIndexOutOfBoundsException if `i < 0` or `length <= i`
     */
-  def update(i: Int, x: T): Unit = array.update(i, x)
+  def update(i: Int, x: Option[T]): Unit = array.update(i, x)
 
   /**
     * @return length of the column

@@ -21,7 +21,7 @@ abstract class TypedColumnBase[T <: Any](implicit ev: ClassTag[T]) {
   /**
     * Returns the backing array of this `TypedColumn`.
     */
-  def array: Array[T]
+  def array: Array[Option[T]]
 
   /**
     * Column name
