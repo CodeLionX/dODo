@@ -25,13 +25,15 @@ object GlobalImplicits {
           s"%${lengthMapping(ta.indexOf(col))}s".format(col(index))
         ).mkString("  ")
       ).mkString("\n")
+      val bigSep = "=" * header.length
+      val medSep = "-" * header.length
 
       s"""|Relation
-          |${"=" * header.length}
+          |$bigSep
           |$header
-          |${"-" * header.length}
+          |$medSep
           |$data
-          |${"-" * header.length}
+          |$medSep
           | ($limit of ${ta(0).length} rows shown)
           |""".stripMargin
     }
