@@ -2,11 +2,9 @@ package com.github.codelionx.dodo
 
 import akka.cluster.Cluster
 import com.github.codelionx.dodo.Settings.DefaultValues
-import com.github.codelionx.dodo.actors.DataHolder.LoadData
-import com.github.codelionx.dodo.actors.SystemCoordinator.{Initialize, Shutdown}
-import com.github.codelionx.dodo.actors.{DataHolder, Reaper, SystemCoordinator}
+import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
+import com.github.codelionx.dodo.actors.{Reaper, SystemCoordinator}
 
-import scala.concurrent.duration._
 import scala.language.postfixOps
 
 
@@ -30,12 +28,10 @@ object Main {
     cluster.registerOnMemberUp {
 
       system.actorOf(Reaper.props, Reaper.name)
-//      val systemCoordinator = system.actorOf(SystemCoordinator.props(), SystemCoordinator.name)
-//
-//      systemCoordinator ! Initialize
-      val dataHolder = system.actorOf(DataHolder.props())
-      val settings = Settings(system)
-      dataHolder ! LoadData(settings.inputFilePath)
+      val systemCoordinator = system.actorOf(SystemCoordinator.props(), SystemCoordinator.name)
+
+      systemCoordinator ! Initialize
+
     }
 
   }
