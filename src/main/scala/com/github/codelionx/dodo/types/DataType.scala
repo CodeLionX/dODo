@@ -1,7 +1,6 @@
 package com.github.codelionx.dodo.types
 
 import java.time._
-import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAccessor
 
 import scala.reflect.ClassTag
@@ -39,8 +38,8 @@ object DataType {
     val NullClass = classOf[Null]
 
     val tpe = ev.runtimeClass match {
-      case ZonedClass => ZonedDateType(DateType.DEFAULT_FORMAT)
-      case LocalClass => LocalDateType(DateType.DEFAULT_FORMAT)
+      case ZonedClass => ZonedDateType(DateFormat.DEFAULT)
+      case LocalClass => LocalDateType(DateFormat.DEFAULT)
       case DoubleClass => DoubleType
       case LongClass => LongType
       case StringClass => StringType
@@ -62,7 +61,7 @@ object DataType {
   *      [[com.github.codelionx.dodo.types.LocalDateType]]
   * @tparam T underlying (primitive) type
   */
-sealed trait DataType[T <: Any] extends Ordered[DataType[_]] {
+sealed trait DataType[T <: Any] extends Ordered[DataType[_]] with Serializable {
 
   /**
     * Returns the underlying type's [[scala.reflect.ClassTag]]. Can be used for pattern matching or using the type
@@ -98,27 +97,20 @@ sealed trait DataType[T <: Any] extends Ordered[DataType[_]] {
   */
 object DateType {
 
-  // supported date formats
-  private val datetimeFormats = Seq(DateTimeFormatter.ISO_DATE_TIME, DateTimeFormatter.RFC_1123_DATE_TIME)
-  private val dateFormats = Seq(DateTimeFormatter.ISO_DATE, DateTimeFormatter.BASIC_ISO_DATE, DateTimeFormatter.ISO_LOCAL_DATE)
-
-  // default format
-  val DEFAULT_FORMAT: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
-
   /**
     * Checks the value for different datetime and date formats.
     *
     * @return a [[com.github.codelionx.dodo.types.DateType.DateChecker]] that provides access if the check was successful and if yes to the correct
     *         data type
     */
-  def dateChecker(value: String) = new DateChecker(value)
+  def dateChecker(value: String): DateChecker = new DateChecker(value)
 
   /**
     * Checks a string if it is a valid date and gives access to the result and the data type.
     */
   class DateChecker {
 
-    private var format: DateTimeFormatter = DEFAULT_FORMAT
+    private var format: DateFormat = DateFormat.DEFAULT
     private var isZoned: Boolean = false
     private var success: Boolean = false
 
@@ -149,15 +141,15 @@ object DateType {
         LocalDateType(format)
 
     private def checkForDateTime(value: String): Unit = {
-      for (format <- datetimeFormats) {
+      for (format <- DateFormat.datetimeFormats) {
         Try {
-          ZonedDateTime.parse(value, format)
+          ZonedDateTime.parse(value, format.toFormatter)
           this.format = format
           this.isZoned = true
         } recoverWith {
           case _: Throwable =>
             Try {
-              LocalDateTime.parse(value, format)
+              LocalDateTime.parse(value, format.toFormatter)
               this.format = format
               this.isZoned = false
             }
@@ -171,9 +163,9 @@ object DateType {
     }
 
     private def checkForDate(value: String): Unit = {
-      for (format <- dateFormats) {
+      for (format <- DateFormat.dateFormats) {
         Try {
-          LocalDate.parse(value, format)
+          LocalDate.parse(value, format.toFormatter)
           this.format = format
           this.isZoned = false
         } match {
@@ -191,14 +183,17 @@ object DateType {
 /**
   * Represents a [[java.time.ZonedDateTime]].
   */
-final case class ZonedDateType(format: DateTimeFormatter) extends DataType[ZonedDateTime] {
+final case class ZonedDateType(format: DateFormat) extends DataType[ZonedDateTime] {
+
+  @transient
+  private lazy val formatter = format.toFormatter
 
   override val tpe: ClassTag[ZonedDateTime] = ClassTag(classOf[ZonedDateTime])
 
   override val ordering: Ordering[Option[ZonedDateTime]] = Ordering.Option(Ordering.by(_.toEpochSecond))
 
   def parse(value: String): Option[ZonedDateTime] = Try {
-    format.parse[ZonedDateTime](value, (temp: TemporalAccessor) => ZonedDateTime.from(temp))
+    formatter.parse[ZonedDateTime](value, (temp: TemporalAccessor) => ZonedDateTime.from(temp))
   }.toOption
 
   override def createTypedColumnBuilder: TypedColumnBuilder[ZonedDateTime] = TypedColumnBuilder(this)
@@ -207,14 +202,17 @@ final case class ZonedDateType(format: DateTimeFormatter) extends DataType[Zoned
 /**
   * Represents a [[java.time.LocalDateTime]].
   */
-final case class LocalDateType(format: DateTimeFormatter) extends DataType[LocalDateTime] {
+final case class LocalDateType(format: DateFormat) extends DataType[LocalDateTime] {
+
+  @transient
+  private lazy val formatter = format.toFormatter
 
   override val tpe: ClassTag[LocalDateTime] = ClassTag(classOf[LocalDateTime])
 
   override val ordering: Ordering[Option[LocalDateTime]] = Ordering.Option(Ordering.by(_.toEpochSecond(ZoneOffset.UTC)))
 
   override def parse(value: String): Option[LocalDateTime] = Try {
-    format.parse[LocalDateTime](value, (temp: TemporalAccessor) => LocalDateTime.from(temp))
+    formatter.parse[LocalDateTime](value, (temp: TemporalAccessor) => LocalDateTime.from(temp))
   }.toOption
 
   override def createTypedColumnBuilder: TypedColumnBuilder[LocalDateTime] = TypedColumnBuilder(this)

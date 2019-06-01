@@ -20,6 +20,9 @@ libraryDependencies ++= Seq(
   // test
   "com.typesafe.akka" %% "akka-testkit" % akkaVersion,
   "org.scalatest" %% "scalatest" % "3.0.5" % "test",
+  // serialization
+  "com.twitter" %% s"chill-akka" % "0.9.3",
+  //"com.github.romix.akka" %% "akka-kryo-serialization" % "0.5.2",
 )
 
 // set main class for assembly

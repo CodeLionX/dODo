@@ -11,12 +11,12 @@ class DataTypeSpec extends WordSpec with Matchers {
 
     "support ZonedDateTime in the factory method" in {
       val dt = DataType.of[ZonedDateTime]
-      dt shouldEqual ZonedDateType(DateType.DEFAULT_FORMAT)
+      dt shouldEqual ZonedDateType(DateFormat.DEFAULT)
     }
 
     "support LocalDateTime in the factory method" in {
       val dt = DataType.of[LocalDateTime]
-      dt shouldEqual LocalDateType(DateType.DEFAULT_FORMAT)
+      dt shouldEqual LocalDateType(DateFormat.DEFAULT)
     }
 
     "support Double in the factory method" in {

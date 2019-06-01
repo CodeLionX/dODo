@@ -1,15 +1,16 @@
-package com.github.codelionx.dodo.discovery
+package com.github.codelionx.dodo
 
-import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.actor.{ActorRef, Props, ActorSystem => AkkaActorSystem}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OCD, OD, OrderEquivalencies}
-import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
 import com.github.codelionx.dodo.actors.SystemCoordinator
+import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
-class ODDetectionSpec extends TestKit(ActorSystem("ODDetectionSpec"))
+class ODDetectionSpec extends TestKit(AkkaActorSystem("ODDetectionSpec"))
   with ImplicitSender
   with WordSpecLike
   with Matchers
