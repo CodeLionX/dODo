@@ -2,7 +2,7 @@ package com.github.codelionx.dodo.sidechannel
 
 
 import akka.actor.Status.Failure
-import akka.actor.{Actor, ActorLogging, Props}
+import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
 import akka.pattern.pipe
 import akka.stream.ActorMaterializer
 import akka.stream.QueueOfferResult.{Dropped, Enqueued, QueueClosed}
@@ -39,20 +39,18 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
   //////////////
 
 
-  implicit private val mat: ActorMaterializer = ActorMaterializer()
+  implicit private val mat: ActorMaterializer = ActorMaterializer()(context)
+  implicit private val system: ActorSystem = context.system
+  import context.dispatcher
 
+  private val dataMsg = DataOverStream(data)
   private val actorConnector = ActorStreamConnector.withQueueSource[GetDataOverStream.type, DataOverStream](
-    self,
-    GetDataOverStream.getClass
-  )(context.system)
+    targetActorRef = self,
+    deserializationClassHint = GetDataOverStream.getClass
+  )
 
   val sourceQueue: SourceQueueWithComplete[DataOverStream] = connection.handleWith(actorConnector)
   log.info(s"DataStreamServant for connection from ${connection.remoteAddress} ready")
-
-  private def offerData(source: SourceQueueWithComplete[DataOverStream], data: DataOverStream): Unit = {
-    import context.dispatcher
-    source.offer(data) pipeTo self
-  }
 
   override def postStop(): Unit = log.info(s"DataStreamServant for connection from ${connection.remoteAddress} stopped")
 
@@ -63,7 +61,7 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
 
     case GetDataOverStream =>
       log.debug("Received request for data over stream")
-      offerData(sourceQueue, DataOverStream(data))
+      sourceQueue.offer(dataMsg) pipeTo self
       sender ! StreamACK
       context.become(handleEnqueing())
 
@@ -96,9 +94,9 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
         s"(${3 - retries + 1} / $MAXIMUM_NUMBER_OF_RETRIES retries)")
 
       context.system.scheduler.scheduleOnce(1 second) {
-        offerData(sourceQueue, DataOverStream(data))
+        sourceQueue.offer(dataMsg) pipeTo self
         context.become(handleEnqueing(retries - 1))
-      }(scala.concurrent.ExecutionContext.Implicits.global)
+      }
 
     case Dropped =>
       sourceQueue.fail(new RuntimeException(s"all $MAXIMUM_NUMBER_OF_RETRIES retries failed!"))

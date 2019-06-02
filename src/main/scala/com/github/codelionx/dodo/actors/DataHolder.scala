@@ -3,11 +3,10 @@ package com.github.codelionx.dodo.actors
 import java.net.InetSocketAddress
 
 import akka.actor.Status.Failure
-import akka.actor.{Actor, ActorLogging, ActorRef, ActorSelection, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, ActorSelection, ActorSystem, Props}
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Tcp
 import akka.stream.scaladsl.Tcp.{IncomingConnection, OutgoingConnection}
-import com.github.codelionx.dodo.GlobalImplicits._
 import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.Settings.DefaultValues
 import com.github.codelionx.dodo.parsing.CSVParser
@@ -61,7 +60,8 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
   private val settings = Settings(context.system)
 
   private def openSidechannel(data: Array[TypedColumn[Any]]): Int = {
-    implicit val mat: ActorMaterializer = ActorMaterializer()
+    implicit val mat: ActorMaterializer = ActorMaterializer()(context)
+    implicit val system: ActorSystem = context.system
 
     val handler: IncomingConnection => Unit = connection => {
       log.info(s"Received connection from ${connection.remoteAddress}")
@@ -71,7 +71,7 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
 
     @tailrec
     def tryBindTo(port: Int): Int = {
-      val future = Tcp()(context.system).bind("0.0.0.0", port).runForeach(handler)
+      val future = Tcp().bind("0.0.0.0", port).runForeach(handler)
       Try {
         Await.result(future, 2 seconds)
       } match {
@@ -93,14 +93,15 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
   }
 
   private def openRemoteConnection(address: InetSocketAddress): Future[OutgoingConnection] = {
-    implicit val mat: ActorMaterializer = ActorMaterializer()
+    implicit val mat: ActorMaterializer = ActorMaterializer()(context)
+    implicit val system: ActorSystem = context.system
 
-    val remoteConnection = Tcp()(context.system).outgoingConnection(address)
+    val remoteConnection = Tcp().outgoingConnection(address)
     val actorConnector = ActorStreamConnector.withSingleSource[DataOverStream, GetDataOverStream.type](
-      self,
-      GetDataOverStream,
-      classOf[DataOverStream]
-    )(context.system)
+      targetActorRef = self,
+      singleSourceElem = GetDataOverStream,
+      deserializationClassHint = classOf[DataOverStream]
+    )
 
     remoteConnection
       .reduce(_ ++ _)
@@ -112,7 +113,7 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
 
   override def receive: Receive = uninitialized
 
-  def uninitialized: Receive = {
+  def uninitialized: Receive = withCommonNotReady {
 
     case LoadDataFromDisk(localFilename) =>
       val data = CSVParser(settings.parsing).parse(localFilename)
@@ -124,44 +125,42 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
 
     case FetchDataFrom(otherDataHolder) =>
       otherDataHolder ! GetSidechannelAddress
+      context.become(handleFetchDataResult(sender))
+  }
+
+  def handleFetchDataResult(originalSender: ActorRef): Receive = withCommonNotReady {
 
     case SidechannelAddress(socketAddress) =>
       openRemoteConnection(socketAddress)
-      context.become(handleStreamResult(sender, socketAddress))
+      context.become(handleStreamResult(originalSender, socketAddress))
 
-    case GetDataRef | GetSidechannelAddress =>
-      log.warning(s"Request to serve data from uninitialized $name")
-      sender ! DataNotReady
-
-    case msg => log.info(s"Unknown message received: $msg")
+    case DataNotReady =>
+      log.error(s"Other data holder (${sender.path}) is no ready yet.")
+      throw new RuntimeException("Fetch data from another data holder failover logic is not implemented yet!")
   }
 
-  def handleStreamResult(originalSender: ActorRef, address: InetSocketAddress): Receive = {
+  def handleStreamResult(originalSender: ActorRef, address: InetSocketAddress): Receive = withCommonNotReady {
 
     case StreamInit =>
       sender ! StreamACK
 
     case DataOverStream(data) =>
       log.info("Received data over stream")
-      println(data.prettyPrintAsTable())
       sender ! StreamACK
-      context.become(receivedData(data, originalSender))
+      context.become(receivedData(originalSender, data))
 
     case Failure(cause) =>
       log.error(s"Error processing fetch data request: $cause. Trying again.")
+      import context.dispatcher
       context.system.scheduler.scheduleOnce(
         2 second,
         self,
         SidechannelAddress(address)
-      )(scala.concurrent.ExecutionContext.Implicits.global)
-      context.become(uninitialized)
-
-    case GetDataRef | GetSidechannelAddress =>
-      log.warning(s"Request to serve data from uninitialized $name")
-      sender ! DataNotReady
+      )
+      context.become(handleFetchDataResult(originalSender))
   }
 
-  def receivedData(data: Array[TypedColumn[Any]], originalSender: ActorRef): Receive = {
+  def receivedData(originalSender: ActorRef, data: Array[TypedColumn[Any]]): Receive = withCommonNotReady {
 
     case StreamComplete =>
       log.info("Stream completed!")
@@ -170,10 +169,6 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
       val port = openSidechannel(data)
       originalSender ! DataLoaded
       context.become(dataReady(data, port))
-
-    case GetDataRef | GetSidechannelAddress =>
-      log.warning(s"Request to serve data from uninitialized $name")
-      sender ! DataNotReady
   }
 
   def dataReady(relation: Array[TypedColumn[Any]], boundPort: Int): Receive = {
@@ -190,5 +185,15 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
     case GetDataRef =>
       log.info(s"Serving data to ${sender.path}")
       sender ! DataRef(relation)
+  }
+
+  def withCommonNotReady(block: Receive): Receive = {
+    val commonNotReady: Receive = {
+      case GetDataRef | GetSidechannelAddress =>
+        log.warning(s"Request to serve data from uninitialized $name")
+        sender ! DataNotReady
+    }
+
+    block orElse commonNotReady
   }
 }

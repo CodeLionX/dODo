@@ -8,13 +8,13 @@ object StreamedDataExchangeProtocol {
   /**
     * Request the relational data. Sent via the stream sidechannel.
     */
-  case object GetDataOverStream
+  case object GetDataOverStream extends Serializable
 
   /**
     * Response to [[com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol.GetDataOverStream]]
     * that contains the relational data. Sent via the stream sidechannel.
     */
-  case class DataOverStream(data: Array[TypedColumn[Any]])
+  case class DataOverStream(data: Array[TypedColumn[Any]]) extends Serializable
 
   /**
     * Indicates stream initialization.
