@@ -28,7 +28,7 @@ object Main {
     cluster.registerOnMemberUp {
 
       system.actorOf(Reaper.props, Reaper.name)
-      system.actorOf(ClusterListener.props)
+      val clusterListener = system.actorOf(ClusterListener.props, ClusterListener.name)
       val systemCoordinator = system.actorOf(SystemCoordinator.props(), SystemCoordinator.name)
 
       systemCoordinator ! Initialize
