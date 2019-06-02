@@ -72,7 +72,7 @@ object TypedColumnBuilder {
     builder.toTypedColumn
   }
 
-  private case class TypedColumnImpl[T <: Any : ClassTag](dataType: DataType[T], name: String, array: Array[T])
+  private case class TypedColumnImpl[T <: Any : ClassTag](dataType: DataType[T], name: String, array: Array[Option[T]])
     extends TypedColumn[T]
 
 }
@@ -85,7 +85,7 @@ object TypedColumnBuilder {
   */
 final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T], var name: String) {
 
-  private val buffer: ArrayBuffer[T] = ArrayBuffer.empty
+  private val buffer: ArrayBuffer[Option[T]] = ArrayBuffer.empty
 
   def clear(): Unit = buffer.clear()
 
@@ -94,7 +94,7 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
     */
   def toTypedColumn: TypedColumn[T] = TypedColumnImpl(dataType, name, buffer.toArray)
 
-  def toArray: Array[T] = buffer.toArray
+  def toArray: Array[Option[T]] = buffer.toArray
 
   /**
     * Parses and adds the elements to this column in order.
@@ -104,7 +104,12 @@ final class TypedColumnBuilder[T <: Any : ClassTag] private(dataType: DataType[T
   /**
     * Add a single element to this builder.
     */
-  def +=(elem: T): TypedColumnBuilder.this.type = {
+  def +=(elem: T): TypedColumnBuilder.this.type = this += Some(elem)
+
+  /**
+    * Add a single element to this builder.
+    */
+  def +=(elem: Option[T]): TypedColumnBuilder.this.type = {
     buffer += elem
     this
   }

@@ -32,7 +32,7 @@ class TypedColumnProcessor private(settings: ParsingSettings) extends AbstractRo
   private object State extends Enumeration {
 
     type State = Value
-    val TypeInferring, EmptyingBuffer, Parsing, Finished = Value
+    val TypeInferring, Parsing, Finished = Value
   }
 
   private var state: State.State = State.TypeInferring
@@ -123,13 +123,10 @@ class TypedColumnProcessor private(settings: ParsingSettings) extends AbstractRo
     state match {
       case State.TypeInferring =>
         runTypeInferring(row)
-        if (untypedRowBufferIndex >= settings.nInferringRows)
-          state = State.EmptyingBuffer
-
-      case State.EmptyingBuffer =>
-        runEmptyingBuffer(context)
-        parseRow(row)
-        state = State.Parsing
+        if (untypedRowBufferIndex >= settings.nInferringRows) {
+          runEmptyingBuffer(context)
+          state = State.Parsing
+        }
 
       case State.Parsing =>
         parseRow(row)

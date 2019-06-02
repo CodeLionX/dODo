@@ -13,7 +13,7 @@ object TypedColumn {
     * Adapter class to bridge between our buffer-based [[com.github.codelionx.dodo.types.TypedColumnBuilder]] and the
     * [[scala.collection.mutable.Builder]] interface
     */
-  private final class BuilderAdapter[T](ref: TypedColumn[T]) extends mutable.ReusableBuilder[T, TypedColumn[T]] {
+  private final class BuilderAdapter[T](ref: TypedColumn[T]) extends mutable.ReusableBuilder[Option[T], TypedColumn[T]] {
 
     private val internalBuilder = TypedColumnBuilder[T](ref.dataType, ref.name)(ref.tag)
 
@@ -21,7 +21,7 @@ object TypedColumn {
 
     override def result(): TypedColumn[T] = internalBuilder.toTypedColumn
 
-    override def +=(elem: T): BuilderAdapter.this.type = {
+    override def +=(elem: Option[T]): BuilderAdapter.this.type = {
       internalBuilder += elem
       this
     }
@@ -43,7 +43,7 @@ trait TypedColumn[T <: Any]
     with TypedColumnSorting[T, TypedColumn[T]]
     with Serializable {
 
-  override protected def newBuilder: mutable.Builder[T, TypedColumn[T]] = new BuilderAdapter(this)
+  override protected def newBuilder: mutable.Builder[Option[T], TypedColumn[T]] = new BuilderAdapter(this)
 
 
   // overrides of [[java.lang.Object]]

@@ -53,30 +53,22 @@ class SystemCoordinator extends Actor with ActorLogging with DependencyChecking 
   override def receive: Receive = {
     case Initialize =>
       log.info("Preparing for OD discovery: loading data")
+      startTime = LocalDateTime.now()
+      startNanos = System.nanoTime()
       dataHolder ! LoadDataFromDisk(settings.inputFilePath)
 
     case DataLoaded =>
       log.info("Starting master and passing ref to data holder")
-      log.info(s"Session is in the hand of ${ODMaster.name}")
+      outputDurationFor("Data loading and parsing")
       startTime = LocalDateTime.now()
       startNanos = System.nanoTime()
+
+      log.info(s"Session is in the hand of ${ODMaster.name}")
       odMaster ! FindODs(dataHolder)
 
     case Finished =>
       log.info("OD Discovery finished, shutting down")
-
-      val endNanos = System.nanoTime()
-      val endTime = LocalDateTime.now()
-      val duration = Duration.fromNanos(endNanos - startNanos)
-      println(
-        s"""|
-            |Started OD discovery with timestamp: $startTime
-            |Finished OD discovery with timestamp: $endTime
-            |================================================
-            |Duration: ${duration.pretty}
-            |================================================
-            |""".stripMargin
-      )
+      outputDurationFor("Order Dependency Discovery with Pruning")
 
       // stops this actor and all direct childs
       context.stop(self)
@@ -89,5 +81,22 @@ class SystemCoordinator extends Actor with ActorLogging with DependencyChecking 
 
     // TODO
     case _ => log.info("Unknown message received")
+  }
+
+  def outputDurationFor(taskDescription: String): Unit = {
+    val endNanos = System.nanoTime()
+    val endTime = LocalDateTime.now()
+    val duration = Duration.fromNanos(endNanos - startNanos)
+    println(
+      s"""|
+          |================================================
+          |$taskDescription
+          |------------------------------------------------
+          |Started with timestamp: $startTime
+          |Finished with timestamp: $endTime
+          |================================================
+          |Duration: ${duration.pretty}
+          |""".stripMargin
+    )
   }
 }
