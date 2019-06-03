@@ -72,8 +72,8 @@ class ODDetectionSpec extends TestKit(AkkaActorSystem("ODDetectionSpec"))
         (Seq("B", "C"), Seq("D", "A"))
       )
 
-      ocds -- expectedOCDs shouldBe empty
-      ods -- expectedODs shouldBe empty
+      ocds shouldEqual expectedOCDs
+      ods shouldEqual expectedODs
     }
   }
 }
