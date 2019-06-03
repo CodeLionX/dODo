@@ -4,7 +4,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
-import com.github.codelionx.dodo.actors.ResultCollector.{OCDs, ODs}
+import com.github.codelionx.dodo.actors.ResultCollector.Results
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.collection.immutable.Queue
@@ -85,8 +85,9 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
           }
         }
       }
-      resultCollector ! ODs(foundODs)
-      resultCollector ! OCDs(foundOCDs)
+      if (foundODs.nonEmpty || foundOCDs.nonEmpty) {
+        resultCollector ! Results(foundODs, foundOCDs)
+      }
       sender ! ODsToCheck(odCandidates, newCandidates)
       sender ! GetTask
 

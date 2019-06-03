@@ -16,9 +16,7 @@ object ResultCollector {
 
   case class OrderEquivalencies(oe: Map[String, Seq[String]])
 
-  case class ODs(od: Seq[(Seq[String], Seq[String])])
-
-  case class OCDs(ocd: Seq[(Seq[String], Seq[String])])
+  case class Results(ods: Seq[(Seq[String], Seq[String])], ocds: Seq[(Seq[String], Seq[String])])
 
 }
 
@@ -60,15 +58,13 @@ class ResultCollector extends Actor with ActorLogging {
         }".stripMargin
       )
 
-    case ODs(ods) =>
+    case Results(ods, ocds) =>
       for (od <- ods) {
         val left = prettyList(od._1)
         val right = prettyList(od._2)
         write(s"OD: $left ↦ $right")
         odsFound += 1
       }
-
-    case OCDs(ocds) =>
       for (ocd <- ocds) {
         val left = prettyList(ocd._1)
         val right = prettyList(ocd._2)
