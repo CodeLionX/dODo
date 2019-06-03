@@ -4,7 +4,8 @@ import java.time.LocalDateTime
 
 import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props}
 import com.github.codelionx.dodo.Settings
-import com.github.codelionx.dodo.actors.DataHolder.{DataLoaded, LoadData}
+import com.github.codelionx.dodo.Settings.DefaultValues
+import com.github.codelionx.dodo.actors.DataHolder.{DataLoaded, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ODMaster.FindODs
 import com.github.codelionx.dodo.discovery.DependencyChecking
 
@@ -34,7 +35,7 @@ class SystemCoordinator extends Actor with ActorLogging with DependencyChecking 
 
   val nWorkers = settings.workers
   def resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
-  val dataHolder: ActorRef = context.actorOf(DataHolder.props(), DataHolder.name)
+  val dataHolder: ActorRef = context.actorOf(DataHolder.props(DefaultValues.HOST), DataHolder.name)
   val odMaster: ActorRef = context.actorOf(ODMaster.props(nWorkers, resultCollector, self), ODMaster.name)
 
   var startTime: LocalDateTime = _
@@ -54,7 +55,7 @@ class SystemCoordinator extends Actor with ActorLogging with DependencyChecking 
       log.info("Preparing for OD discovery: loading data")
       startTime = LocalDateTime.now()
       startNanos = System.nanoTime()
-      dataHolder ! LoadData(settings.inputFilePath)
+      dataHolder ! LoadDataFromDisk(settings.inputFilePath)
 
     case DataLoaded =>
       log.info("Starting master and passing ref to data holder")
