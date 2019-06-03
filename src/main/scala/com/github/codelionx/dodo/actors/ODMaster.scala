@@ -1,6 +1,7 @@
 package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.DataHolder.{DataRef, GetDataRef}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
 import com.github.codelionx.dodo.actors.SystemCoordinator.Finished
@@ -26,6 +27,7 @@ object ODMaster {
 class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: ActorRef) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
 
   import ODMaster._
+  private val settings = Settings(context.system)
   private val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
     context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
   )
@@ -110,7 +112,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
   def findingODs(table: Array[TypedColumn[Any]]): Receive = {
     case GetTask =>
       if (odsToCheck.nonEmpty) {
-        val batchLength = math.max(odsToCheck.length / nWorkers, odsToCheck.length)
+        val batchLength = math.min(math.max(odsToCheck.length / nWorkers, odsToCheck.length), settings.maxBatchSize)
         val (workerODs, newQueue) = odsToCheck.splitAt(batchLength)
         odsToCheck = newQueue
 
