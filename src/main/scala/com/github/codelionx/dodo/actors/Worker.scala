@@ -22,7 +22,7 @@ object Worker {
 
   case class OrderEquivalent(oe: (Int, Int), isOrderEquiv: Boolean)
 
-  case class CheckForOD(odToCheck: (Seq[Int], Seq[Int]), reducedColumns: Set[Int])
+  case class CheckForOD(odToCheck: Queue[(Seq[Int], Seq[Int])], reducedColumns: Set[Int])
 
   case class ODsToCheck(parentOD: (Seq[Int], Seq[Int]), newODs: Queue[(Seq[Int], Seq[Int])])
 
@@ -59,32 +59,34 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       sender ! OrderEquivalent(oeToCheck, checkOrderEquivalent(table(oeToCheck._1), table(oeToCheck._2)))
       sender ! GetTask
 
-    case CheckForOD(odCandidate, reducedColumns) =>
-      val ocdCandidate = (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1)
-      var foundOD = false
-      if (checkOrderDependent(ocdCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
+    case CheckForOD(odCandidates, reducedColumns) =>
+      for (odCandidate <- odCandidates) {
+        val ocdCandidate = (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1)
+        var foundOD = false
+        if (checkOrderDependent(ocdCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
 
-        var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
+          var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
 
-        if (checkOrderDependent(odCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
-          resultCollector ! OD(substituteColumnNames(odCandidate, table))
-          foundOD = true
+          if (checkOrderDependent(odCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
+            resultCollector ! OD(substituteColumnNames(odCandidate, table))
+            foundOD = true
+          } else {
+            newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
+          }
+          val mirroredOD = odCandidate.swap
+          if (checkOrderDependent(mirroredOD, table.asInstanceOf[Array[TypedColumn[_]]])) {
+            resultCollector ! OD(substituteColumnNames(mirroredOD, table))
+            foundOD = true
+          } else {
+            newCandidates ++= generateODCandidates(reducedColumns, odCandidate, leftSide = false)
+          }
+          sender ! ODsToCheck(odCandidate, newCandidates)
+          if (!foundOD || !settings.ocdComparability ) {
+            resultCollector ! OCD(substituteColumnNames(odCandidate, table))
+          }
         } else {
-          newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
+          sender ! ODsToCheck(odCandidate, Queue.empty)
         }
-        val mirroredOD = odCandidate.swap
-        if (checkOrderDependent(mirroredOD, table.asInstanceOf[Array[TypedColumn[_]]])) {
-          resultCollector ! OD(substituteColumnNames(mirroredOD, table))
-          foundOD = true
-        } else {
-          newCandidates ++= generateODCandidates(reducedColumns, odCandidate, leftSide = false)
-        }
-        sender ! ODsToCheck(odCandidate, newCandidates)
-        if (!foundOD || !settings.ocdComparability ) {
-          resultCollector ! OCD(substituteColumnNames(odCandidate, table))
-        }
-      } else {
-        sender ! ODsToCheck(odCandidate, Queue.empty)
       }
       sender ! GetTask
 

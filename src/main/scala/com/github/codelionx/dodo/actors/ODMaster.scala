@@ -110,12 +110,13 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
   def findingODs(table: Array[TypedColumn[Any]]): Receive = {
     case GetTask =>
       if (odsToCheck.nonEmpty) {
-        val (odToCheck, newQueue) = odsToCheck.dequeue
+        val batchLength = odsToCheck.length / nWorkers
+        val (workerODs, newQueue) = odsToCheck.splitAt(batchLength)
         odsToCheck = newQueue
 
-        log.debug(s"Scheduling task to check OCD $odToCheck to worker ${sender.path.name}")
-        sender ! CheckForOD(odToCheck, reducedColumns)
-        waitingForODStatus += odToCheck
+        log.debug(s"Scheduling task to check OCD $workerODs to worker ${sender.path.name}")
+        sender ! CheckForOD(workerODs, reducedColumns)
+        waitingForODStatus ++= workerODs.toSet
       }
 
     case ODsToCheck(originalOD, newODs) =>
