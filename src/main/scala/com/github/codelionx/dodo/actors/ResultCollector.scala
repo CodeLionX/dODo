@@ -16,9 +16,9 @@ object ResultCollector {
 
   case class OrderEquivalencies(oe: Map[String, Seq[String]])
 
-  case class OD(od: (Seq[String], Seq[String]))
+  case class ODs(od: Seq[(Seq[String], Seq[String])])
 
-  case class OCD(ocd: (Seq[String], Seq[String]))
+  case class OCDs(ocd: Seq[(Seq[String], Seq[String])])
 
 }
 
@@ -60,20 +60,23 @@ class ResultCollector extends Actor with ActorLogging {
         }".stripMargin
       )
 
-    case OD(od) =>
-      val left = prettyList(od._1)
-      val right = prettyList(od._2)
-      write(s"OD: $left ↦ $right")
-      odsFound += 1
-      // TODO: extract order equivalent ods
-
-    case OCD(ocd) =>
-      val left = prettyList(ocd._1)
-      val right = prettyList(ocd._2)
-      if (settings.ocdComparability) {
+    case ODs(ods) =>
+      for (od <- ods) {
+        val left = prettyList(od._1)
+        val right = prettyList(od._2)
+        write(s"OD: $left ↦ $right")
         odsFound += 1
       }
-      write(s"OCD: $left ~ $right")
+
+    case OCDs(ocds) =>
+      for (ocd <- ocds) {
+        val left = prettyList(ocd._1)
+        val right = prettyList(ocd._2)
+        if (settings.ocdComparability) {
+          odsFound += 1
+        }
+        write(s"OCD: $left ~ $right")
+      }
 
     case _ => log.info("Unknown message received")
   }

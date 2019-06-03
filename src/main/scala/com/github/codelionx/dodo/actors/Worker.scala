@@ -4,7 +4,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
-import com.github.codelionx.dodo.actors.ResultCollector.{OCD, OD}
+import com.github.codelionx.dodo.actors.ResultCollector.{OCDs, ODs}
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.collection.immutable.Queue
@@ -61,28 +61,32 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
     case CheckForOD(odCandidates, reducedColumns) =>
       var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
+      var foundODs: Seq[(Seq[String], Seq[String])] = Seq.empty
+      var foundOCDs: Seq[(Seq[String], Seq[String])] = Seq.empty
       for (odCandidate <- odCandidates) {
         val ocdCandidate = (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1)
         var foundOD = false
         if (checkOrderDependent(ocdCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
           if (checkOrderDependent(odCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
-            resultCollector ! OD(substituteColumnNames(odCandidate, table))
+            foundODs :+= substituteColumnNames(odCandidate, table)
             foundOD = true
           } else {
             newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
           }
           val mirroredOD = odCandidate.swap
           if (checkOrderDependent(mirroredOD, table.asInstanceOf[Array[TypedColumn[_]]])) {
-            resultCollector ! OD(substituteColumnNames(mirroredOD, table))
+            foundODs :+= substituteColumnNames(mirroredOD, table)
             foundOD = true
           } else {
             newCandidates ++= generateODCandidates(reducedColumns, odCandidate, leftSide = false)
           }
           if (!foundOD || !settings.ocdComparability ) {
-            resultCollector ! OCD(substituteColumnNames(odCandidate, table))
+            foundOCDs :+= substituteColumnNames(odCandidate, table)
           }
         }
       }
+      resultCollector ! ODs(foundODs)
+      resultCollector ! OCDs(foundOCDs)
       sender ! ODsToCheck(odCandidates, newCandidates)
       sender ! GetTask
 
