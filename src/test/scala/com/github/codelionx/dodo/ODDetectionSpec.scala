@@ -2,7 +2,7 @@ package com.github.codelionx.dodo
 
 import akka.actor.{ActorRef, Props, ActorSystem => AkkaActorSystem}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
-import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OCD, OD, OrderEquivalencies}
+import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies, Results}
 import com.github.codelionx.dodo.actors.SystemCoordinator
 import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
@@ -40,8 +40,9 @@ class ODDetectionSpec extends TestKit(AkkaActorSystem("ODDetectionSpec"))
       var ocds: Set[(Seq[String], Seq[String])] = Set.empty
       var ods: Set[(Seq[String], Seq[String])] = Set.empty
       probe.receiveWhile(max = 500 millis) {
-        case OCD(ocd) => ocds += ocd
-        case OD(od) => ods += od
+        case Results(od, ocd) =>
+          ods ++= od.toSet
+          ocds ++= ocd.toSet
       }
       val expectedODs = Set(
         (Seq("A"), Seq("B")),
