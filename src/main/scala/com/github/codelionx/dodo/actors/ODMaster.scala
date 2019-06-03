@@ -33,7 +33,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
   private var pendingPruningResponses = 0
 
   private var odsToCheck: Queue[(Seq[Int], Seq[Int])] = Queue.empty
-  private var waitingForODStatus: Set[(Seq[Int], Seq[Int])] = Set.empty
+  private var waitingForODStatus: Set[Queue[(Seq[Int], Seq[Int])]] = Set.empty
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")
@@ -116,12 +116,12 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
 
         log.debug(s"Scheduling task to check OCD $workerODs to worker ${sender.path.name}")
         sender ! CheckForOD(workerODs, reducedColumns)
-        waitingForODStatus ++= workerODs.toSet
+        waitingForODStatus += workerODs
       }
 
-    case ODsToCheck(originalOD, newODs) =>
+    case ODsToCheck(originalODs, newODs) =>
       odsToCheck ++= newODs
-      waitingForODStatus -= originalOD
+      waitingForODStatus -= originalODs
       if (waitingForODStatus.isEmpty && odsToCheck.isEmpty) {
         log.info("Found all ODs")
         systemCoordinator ! Finished

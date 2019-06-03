@@ -24,7 +24,7 @@ object Worker {
 
   case class CheckForOD(odToCheck: Queue[(Seq[Int], Seq[Int])], reducedColumns: Set[Int])
 
-  case class ODsToCheck(parentOD: (Seq[Int], Seq[Int]), newODs: Queue[(Seq[Int], Seq[Int])])
+  case class ODsToCheck(parentODs: Queue[(Seq[Int], Seq[Int])], newODs: Queue[(Seq[Int], Seq[Int])])
 
   case class ODFound(od: (Seq[Int], Seq[Int]))
 
@@ -60,13 +60,11 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       sender ! GetTask
 
     case CheckForOD(odCandidates, reducedColumns) =>
+      var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
       for (odCandidate <- odCandidates) {
         val ocdCandidate = (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1)
         var foundOD = false
         if (checkOrderDependent(ocdCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
-
-          var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
-
           if (checkOrderDependent(odCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
             resultCollector ! OD(substituteColumnNames(odCandidate, table))
             foundOD = true
@@ -80,14 +78,12 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
           } else {
             newCandidates ++= generateODCandidates(reducedColumns, odCandidate, leftSide = false)
           }
-          sender ! ODsToCheck(odCandidate, newCandidates)
           if (!foundOD || !settings.ocdComparability ) {
             resultCollector ! OCD(substituteColumnNames(odCandidate, table))
           }
-        } else {
-          sender ! ODsToCheck(odCandidate, Queue.empty)
         }
       }
+      sender ! ODsToCheck(odCandidates, newCandidates)
       sender ! GetTask
 
     case _ => log.info("Unknown message received")
