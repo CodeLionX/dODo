@@ -26,7 +26,7 @@ libraryDependencies ++= Seq(
 )
 
 // set main class for assembly
-//mainClass in assembly := Some("com.github.codelionx.dodo.App")
+mainClass in assembly := Some("com.github.codelionx.dodo.Main")
 
 // skip tests during assembly
-//test in assembly := {}
+test in assembly := {}
