@@ -3,7 +3,6 @@ package com.github.codelionx.dodo.actors
 import akka.actor.{Actor, ActorLogging, Props, RootActorPath}
 import akka.cluster.ClusterEvent._
 import akka.cluster.{Cluster, Member}
-import com.github.codelionx.dodo.actors.ClusterListener.{GetLeftNeighbour, LeftNeighbour}
 
 import scala.util.Try
 
@@ -15,13 +14,22 @@ object ClusterListener {
   def props: Props = Props[ClusterListener]
 
   case object GetLeftNeighbour
-
   case class LeftNeighbour(address: RootActorPath)
+
+  case object GetRightNeighbour
+  case class RightNeighbour(address: RootActorPath)
+
+  class ClusterStateException(message: String, cause: Throwable = null) extends RuntimeException(message, cause) {
+    def this(cause: Throwable) = this(cause.getMessage, cause)
+  }
 
 }
 
 
 class ClusterListener extends Actor with ActorLogging {
+
+  import ClusterListener._
+
 
   implicit private val memberOrder: Ordering[Member] = Member.ageOrdering
 
@@ -54,28 +62,44 @@ class ClusterListener extends Actor with ActorLogging {
     case ReachableMember(node) =>
       log.info(s"$node detected reachable again")
 
-    case GetLeftNeighbour =>
+    case GetLeftNeighbour if members.length >= 2 =>
       getLeftNeighbour(members)
-        .map(member =>
-          sender ! LeftNeighbour(RootActorPath(member.address))
-        )
+        .map(member => sender ! LeftNeighbour(RootActorPath(member.address)))
         .recover(sendError)
-  }
 
-  private def sendError: PartialFunction[Throwable, Unit] = {
-    case error => sender ! akka.actor.Status.Failure(error)
+    case GetRightNeighbour if members.length >= 2 =>
+      getRightNeighbour(members)
+        .map(member => sender ! RightNeighbour(RootActorPath(member.address)))
+        .recover(sendError)
+
+    case GetLeftNeighbour | GetRightNeighbour if members.length < 2 =>
+      log.warning(s"Cluster size too small for neighbour operations: ${members.length}")
+      sendError.apply(new ClusterStateException(s"Cluster size is too small: only ${members.length} of 2 members"))
   }
 
   private def getLeftNeighbour(members: Seq[Member]): Try[Member] = Try {
     members.indexOf(selfMember) match {
-      case -1 =>
-        log.error("our node is not up yet??")
-        log.info(s"current member list: ${members.mkString(", ")}")
-        throw new RuntimeException("Could not find self node in the member list!")
-      case 0 =>
-        members.last
-      case i =>
-        members(i - 1)
+      case -1 => throwSelfNotFound
+      case  0 => members.last
+      case  i => members(i - 1)
     }
+  }
+
+  private def getRightNeighbour(members: Seq[Member]): Try[Member] = Try {
+    val end = members.length - 1
+    members.indexOf(selfMember) match {
+      case  -1   => throwSelfNotFound
+      case `end` => members.head
+      case   i   => members(i + 1)
+    }
+  }
+
+  private def throwSelfNotFound = {
+    log.error("Could not find self node in the member list: our node is not up yet??")
+    throw new ClusterStateException("Could not find self node in the member list")
+  }
+
+  private def sendError: PartialFunction[Throwable, Unit] = {
+    case error => sender ! akka.actor.Status.Failure(error)
   }
 }
