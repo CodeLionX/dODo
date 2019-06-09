@@ -23,6 +23,7 @@ object Main {
 
       val systemCoordinator = system.actorOf(SystemCoordinator.props(), SystemCoordinator.name)
       systemCoordinator ! Initialize
+
     }
 
   }

@@ -47,6 +47,8 @@ class Settings(config: Config) extends Extension {
 
   val workers: Int = config.getInt(s"$namespace.workers")
 
+  val maxBatchSize: Int = config.getInt(s"$namespace.max-batch-size")
+
   val ocdComparability: Boolean = config.getBoolean(s"$namespace.ocd-comparability")
 
   val parsing: ParsingSettings = new ParsingSettings(config, namespace)
