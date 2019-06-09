@@ -1,9 +1,8 @@
 package com.github.codelionx.dodo
 
 import akka.cluster.Cluster
-import com.github.codelionx.dodo.Settings.DefaultValues
 import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
-import com.github.codelionx.dodo.actors.{ClusterListener, Reaper, SystemCoordinator}
+import com.github.codelionx.dodo.actors.{Reaper, SystemCoordinator}
 
 import scala.language.postfixOps
 
@@ -14,23 +13,15 @@ object Main {
 
   def main(args: Array[String]): Unit = {
 
-    val system = ActorSystem.actorSystem(actorSystemName, ActorSystem.configuration(
-      actorSystemName = actorSystemName,
-      actorSystemRole = DefaultValues.NodeRole.Leader,
-      host = DefaultValues.HOST,
-      port = DefaultValues.PORT,
-      masterHost = DefaultValues.HOST,
-      masterPort = DefaultValues.PORT
-    ))
+    val system = ActorSystem.actorSystem(actorSystemName, ActorSystem.defaultConfiguration)
 
     val cluster = Cluster(system)
 
     cluster.registerOnMemberUp {
 
       system.actorOf(Reaper.props, Reaper.name)
-      val clusterListener = system.actorOf(ClusterListener.props, ClusterListener.name)
-      val systemCoordinator = system.actorOf(SystemCoordinator.props(), SystemCoordinator.name)
 
+      val systemCoordinator = system.actorOf(SystemCoordinator.props(), SystemCoordinator.name)
       systemCoordinator ! Initialize
     }
 
