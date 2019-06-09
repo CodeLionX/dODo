@@ -13,11 +13,11 @@ object ClusterListener {
 
   def props: Props = Props[ClusterListener]
 
-  case object GetLeftNeighbour
-  case class LeftNeighbour(address: RootActorPath)
+  case object GetLeftNeighbor
+  case class LeftNeighbor(address: RootActorPath)
 
-  case object GetRightNeighbour
-  case class RightNeighbour(address: RootActorPath)
+  case object GetRightNeighbor
+  case class RightNeighbor(address: RootActorPath)
 
   class ClusterStateException(message: String, cause: Throwable = null) extends RuntimeException(message, cause) {
     def this(cause: Throwable) = this(cause.getMessage, cause)
@@ -62,22 +62,22 @@ class ClusterListener extends Actor with ActorLogging {
     case ReachableMember(node) =>
       log.info(s"$node detected reachable again")
 
-    case GetLeftNeighbour if members.length >= 2 =>
-      getLeftNeighbour(members)
-        .map(member => sender ! LeftNeighbour(RootActorPath(member.address)))
+    case GetLeftNeighbor if members.length >= 2 =>
+      getLeftNeighbor(members)
+        .map(member => sender ! LeftNeighbor(RootActorPath(member.address)))
         .recover(sendError)
 
-    case GetRightNeighbour if members.length >= 2 =>
-      getRightNeighbour(members)
-        .map(member => sender ! RightNeighbour(RootActorPath(member.address)))
+    case GetRightNeighbor if members.length >= 2 =>
+      getRightNeighbor(members)
+        .map(member => sender ! RightNeighbor(RootActorPath(member.address)))
         .recover(sendError)
 
-    case GetLeftNeighbour | GetRightNeighbour if members.length < 2 =>
-      log.warning(s"Cluster size too small for neighbour operations: ${members.length}")
+    case GetLeftNeighbor | GetRightNeighbor if members.length < 2 =>
+      log.warning(s"Cluster size too small for neighbor operations: ${members.length}")
       sendError.apply(new ClusterStateException(s"Cluster size is too small: only ${members.length} of 2 members"))
   }
 
-  private def getLeftNeighbour(members: Seq[Member]): Try[Member] = Try {
+  private def getLeftNeighbor(members: Seq[Member]): Try[Member] = Try {
     members.indexOf(selfMember) match {
       case -1 => throwSelfNotFound
       case  0 => members.last
@@ -85,7 +85,7 @@ class ClusterListener extends Actor with ActorLogging {
     }
   }
 
-  private def getRightNeighbour(members: Seq[Member]): Try[Member] = Try {
+  private def getRightNeighbor(members: Seq[Member]): Try[Member] = Try {
     val end = members.length - 1
     members.indexOf(selfMember) match {
       case  -1   => throwSelfNotFound
