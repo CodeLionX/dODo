@@ -11,9 +11,7 @@ import scala.language.postfixOps
 
 object ActorSystem {
 
-  private val configFilename = "application"
-
-  def defaultConfiguration: Config = ConfigFactory.load(configFilename)
+  def defaultConfiguration: Config = ConfigFactory.load()
 
   def configuration(actorSystemName: String, actorSystemRole: String, host: String, port: Int, masterHost: String, masterPort: Int): Config = {
     ConfigFactory.parseString(
@@ -24,7 +22,7 @@ object ActorSystem {
          |  "akka://$actorSystemName@$masterHost:$masterPort"
          |]
        """.stripMargin)
-      .withFallback(ConfigFactory.load(configFilename))
+      .withFallback(ConfigFactory.load())
   }
 
   def actorSystem(actorSystemName: String, config: Config): akka.actor.ActorSystem = {
