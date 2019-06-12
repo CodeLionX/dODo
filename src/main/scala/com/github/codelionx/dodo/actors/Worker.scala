@@ -31,7 +31,7 @@ object Worker {
   case class ODFound(od: (Seq[Int], Seq[Int]))
 
   // debugging
-  private val reportingInterval = 5 seconds
+  val reportingInterval: FiniteDuration = 5 seconds
 
   private case object ReportStatus
 
@@ -69,11 +69,11 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
     case DataRef(table) =>
       sender ! GetTask
       context.become(workReady(table))
-    case _ => log.info("Unknown message received")
 
     case ReportStatus =>
       log.debug("Worker uninitialized, waiting for data ref...")
 
+    case _ => log.info("Unknown message received")
   }
 
   def workReady(table: Array[TypedColumn[Any]]): Receive = {
@@ -117,9 +117,9 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
     case ReportStatus =>
       val statusMsg = itemsProcessed match {
-        case i if i > 1000 * 1000 * 1000 => s"${i / 1000 / 1000 / 1000}M"
-        case i if i > 1000 * 1000 => s"${i / 1000 / 1000}M"
-        case i if i > 1000 => s"${i / 1000}k"
+        case i if i > 10e9 => s"${i / 10e9}B"
+        case i if i > 10e6 => s"${i / 10e6}M"
+        case i if i > 10e3 => s"${i / 10e3}k"
         case i => i
       }
       log.debug("Processed {} items", statusMsg)
