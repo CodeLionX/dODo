@@ -33,15 +33,12 @@ class ResultCollector extends Actor with ActorLogging {
   // FileWriter
   val bw = new BufferedWriter(new FileWriter(new File(settings.outputFilePath)))
 
-  override def preStart(): Unit = {
-    log.info(s"Starting $name")
+  override def preStart(): Unit =
     Reaper.watchWithDefault(self)
-  }
 
   override def postStop(): Unit = {
     bw.close()
-    log.info(s"$odsFound ODs found")
-    log.info(s"Stopping $name")
+    log.info("{} ODs found", odsFound)
   }
 
   override def receive: Receive = {

@@ -63,7 +63,7 @@ class SystemCoordinator extends Actor with ActorLogging with DependencyChecking 
       startTime = LocalDateTime.now()
       startNanos = System.nanoTime()
 
-      log.info(s"Session is in the hand of ${ODMaster.name}")
+      log.info("Session is in the hand of {}", ODMaster.name)
       odMaster ! FindODs(dataHolder)
 
     case Finished =>
