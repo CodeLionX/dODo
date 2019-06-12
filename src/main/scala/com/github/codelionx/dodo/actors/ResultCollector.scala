@@ -77,10 +77,13 @@ class ResultCollector extends Actor with ActorLogging {
     case _ => log.info("Unknown message received")
   }
 
-  def write(message: String): Unit = {
-    bw.write(message + "\n")
-    log.info(message)
-  }
+  def write(message: String): Unit =
+    if (settings.outputToConsole) {
+      bw.write(message + "\n")
+      log.info(message)
+    } else {
+      bw.write(message + "\n")
+    }
 
   def prettyList(l: Seq[String]): String = {
     val newString: StringBuilder = new StringBuilder()

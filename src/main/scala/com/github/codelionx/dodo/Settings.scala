@@ -45,6 +45,8 @@ class Settings(config: Config) extends Extension {
 
   val outputFilePath: String = config.getString(s"$namespace.output-file")
 
+  val outputToConsole: Boolean = config.getBoolean(s"$namespace.output-to-console")
+
   val workers: Int = config.getInt(s"$namespace.workers")
 
   val maxBatchSize: Int = config.getInt(s"$namespace.max-batch-size")
