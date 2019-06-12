@@ -1,6 +1,6 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable, Props}
 import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
 import com.github.codelionx.dodo.actors.ResultCollector.Results
@@ -30,11 +30,12 @@ object Worker {
 
   case class ODFound(od: (Seq[Int], Seq[Int]))
 
+  case class GetTaskTimeout(master: ActorRef)
+
   // debugging
   private val reportingInterval = 5 seconds
 
   private case object ReportStatus
-
 }
 
 
@@ -57,7 +58,6 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       log.info("Debugging enabled: performing regular status reporting every {}", reportingInterval.pretty)
       context.system.scheduler.schedule(reportingInterval, reportingInterval, self, ReportStatus)
     }
-
   }
 
   override def postStop(): Unit =
@@ -67,22 +67,25 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
   def uninitialized: Receive = {
     case DataRef(table) =>
-      sender ! GetTask
-      context.become(workReady(table))
-    case _ => log.info("Unknown message received")
+      val timeout = requestNextTask(sender)
+      context.become(workReady(table, timeout))
 
     case ReportStatus =>
       log.debug("Worker uninitialized, waiting for data ref...")
 
+    case _ => log.info("Unknown message received")
   }
 
-  def workReady(table: Array[TypedColumn[Any]]): Receive = {
+  def workReady(table: Array[TypedColumn[Any]], timeoutCancellable: Cancellable): Receive = {
     case CheckForEquivalency(oeToCheck) =>
+      timeoutCancellable.cancel()
       sender ! OrderEquivalent(oeToCheck, checkOrderEquivalent(table(oeToCheck._1), table(oeToCheck._2)))
-      sender ! GetTask
       itemsProcessed += 1
+      val timeout = requestNextTask(sender)
+      context.become(workReady(table, timeout))
 
     case CheckForOD(odCandidates, reducedColumns) =>
+      timeoutCancellable.cancel()
       var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
       var foundODs: Seq[(Seq[String], Seq[String])] = Seq.empty
       var foundOCDs: Seq[(Seq[String], Seq[String])] = Seq.empty
@@ -113,7 +116,13 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       }
       itemsProcessed += odCandidates.length
       sender ! ODsToCheck(odCandidates, newCandidates)
-      sender ! GetTask
+      val timeout = requestNextTask(sender)
+      context.become(workReady(table, timeout))
+
+    case GetTaskTimeout(master) =>
+      log.warning("No task received from master, trying again")
+      val timeout = requestNextTask(master)
+      context.become(workReady(table, timeout))
 
     case ReportStatus =>
       val statusMsg = itemsProcessed match {
@@ -129,5 +138,11 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
   def substituteColumnNames(dependency: (Seq[Int], Seq[Int]), table: Array[TypedColumn[Any]]): (Seq[String], Seq[String]) = {
     dependency._1.map(table(_).name) -> dependency._2.map(table(_).name)
+  }
+
+  def requestNextTask(master: ActorRef): Cancellable = {
+    master ! GetTask
+    import context.dispatcher
+    context.system.scheduler.scheduleOnce(5 seconds, self, GetTaskTimeout(master))
   }
 }
