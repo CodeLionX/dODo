@@ -1,15 +1,20 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, ReceiveTimeout}
+import akka.cluster.pubsub.DistributedPubSub
+import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, SubscribeAck}
 import com.github.codelionx.dodo.Settings
+import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, NumberOfNodes}
 import com.github.codelionx.dodo.actors.DataHolder.{DataRef, GetDataRef}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
 import com.github.codelionx.dodo.actors.SystemCoordinator.Finished
 import com.github.codelionx.dodo.actors.Worker.{CheckForEquivalency, CheckForOD, GetTask, ODsToCheck, OrderEquivalent}
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
+import com.sun.org.apache.xpath.internal.functions.FuncFalse
 
 import scala.collection.immutable.Queue
+import scala.concurrent.duration._
 import scala.language.postfixOps
 
 
@@ -21,6 +26,11 @@ object ODMaster {
 
   case class FindODs(dataHolder: ActorRef)
 
+  case object GetWorkLoad
+  case class WorkLoad(queueSize: Int)
+  case class StealWork(amount: Int)
+  case class SendWork(work: Queue[(Seq[Int], Seq[Int])])
+  case object AckWorkReceived
 }
 
 
@@ -31,11 +41,18 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
   private val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
     context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
   )
+  private val clusterListener: ActorRef = context.actorOf(ClusterListener.props, ClusterListener.name)
+
   private var reducedColumns: Set[Int] = Set.empty
   private var pendingPruningResponses = 0
 
   private var odsToCheck: Queue[(Seq[Int], Seq[Int])] = Queue.empty
-  private var waitingForODStatus: Set[Queue[(Seq[Int], Seq[Int])]] = Set.empty
+  private var waitingForODStatus: Map[ActorRef, Queue[(Seq[Int], Seq[Int])]] = Map.empty
+
+  private var othersWorkloads: Seq[(Int, ActorRef)] = Seq.empty
+
+  val workStealingMediator = DistributedPubSub(context.system).mediator
+  workStealingMediator ! Subscribe("workStealing", self)
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")
@@ -45,9 +62,19 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
   override def postStop(): Unit =
     log.info(s"Stopping $name")
 
-  override def receive: Receive = uninitialized
+  override def receive: Receive = unsubscribed
 
-  def uninitialized: Receive = {
+  def unsubscribed: Receive = {
+    case SubscribeAck(Subscribe("workStealing", None, `self`)) =>
+      log.info("subscribed to the workStealing mediator")
+      clusterListener ! GetNumberOfNodes
+    case NumberOfNodes(number) =>
+      context.become(uninitialized(number <= 1))
+    //TODO: case FindODs(dataHolder):
+    case _ => log.info("Unknown message received")
+  }
+
+  def uninitialized(first:Boolean): Receive = {
     case FindODs(dataHolder) =>
       dataHolder ! GetDataRef
 
@@ -57,14 +84,20 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         systemCoordinator ! Finished
         context.stop(self)
       }
-      val orderEquivalencies = Array.fill(table.length){Seq.empty[Int]}
-      val columnIndexTuples = table.indices.combinations(2).map(l => l.head -> l(1))
+      if (first) {
+        val orderEquivalencies = Array.fill(table.length){Seq.empty[Int]}
+        val columnIndexTuples = table.indices.combinations(2).map(l => l.head -> l(1))
 
-      reducedColumns = table.indices.toSet
-      val constColumns = pruneConstColumns(table)
-      resultCollector ! ConstColumns(constColumns.map(table(_).name))
-      workers.foreach(actor => actor ! DataRef(table))
-      context.become(pruning(table, orderEquivalencies, columnIndexTuples))
+        reducedColumns = table.indices.toSet
+        val constColumns = pruneConstColumns(table)
+        resultCollector ! ConstColumns(constColumns.map(table(_).name))
+        workers.foreach(actor => actor ! DataRef(table))
+        context.become(pruning(table, orderEquivalencies, columnIndexTuples))
+      }
+      else {
+        workStealingMediator ! Publish("workStealing", GetWorkLoad)
+        context.become(findingODs(table))
+      }
 
     case _ => log.info("Unknown message received")
   }
@@ -118,12 +151,46 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
 
         log.debug(s"Scheduling task to check OCD $workerODs to worker ${sender.path.name}")
         sender ! CheckForOD(workerODs, reducedColumns)
-        waitingForODStatus += workerODs
+        waitingForODStatus += (sender -> workerODs)
+        if (odsToCheck.isEmpty) {
+          othersWorkloads = Seq.empty
+          workStealingMediator ! Publish("workStealing", GetWorkLoad)
+          context.setReceiveTimeout(1 second)
+        }
       }
+
+    case WorkLoad(queueSize: Int) =>
+      othersWorkloads :+ (queueSize, sender)
+    case ReceiveTimeout =>
+      context.setReceiveTimeout(Duration.Undefined)
+      val sortedWorkloads = othersWorkloads.sorted
+      val averageWl: Int = sortedWorkloads.foldLeft(0)(_ + _._1)/(sortedWorkloads.size + 1)
+      var ownWorkLoad = 0
+      for (master <- sortedWorkloads) {
+        val amountToSteal = math.min(master._1 - averageWl, averageWl - ownWorkLoad)
+        if (amountToSteal > 0) {
+          master._2 ! StealWork(amountToSteal)
+          ownWorkLoad -= amountToSteal
+        }
+      }
+
+    case StealWork(amount: Int) =>
+      val (stolenQueue, newQueue) = odsToCheck.splitAt(amount)
+      odsToCheck = newQueue
+      waitingForODStatus += (sender -> stolenQueue)
+      sender ! SendWork(stolenQueue)
+      // TODO: set some kind of timeout to check whether the queue was received
+
+    case SendWork(stolenQueue) =>
+      odsToCheck ++= stolenQueue
+      sender ! AckWorkReceived
+
+    case AckWorkReceived =>
+      waitingForODStatus -= sender
 
     case ODsToCheck(originalODs, newODs) =>
       odsToCheck ++= newODs
-      waitingForODStatus -= originalODs
+      waitingForODStatus -= sender
       if (waitingForODStatus.isEmpty && odsToCheck.isEmpty) {
         log.info("Found all ODs")
         systemCoordinator ! Finished
