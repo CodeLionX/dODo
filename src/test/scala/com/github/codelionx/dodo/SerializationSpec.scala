@@ -17,8 +17,11 @@ object SerializationSpec {
   val config: Config = ConfigFactory.parseString(
     s"""akka.remote.artery.canonical.hostname = "127.0.0.1"
        |akka.remote.artery.canonical.port = "7990"
+       |akka.cluster.seed-nodes = [
+       |  "akka://SerializationSpec@127.0.0.1:7990"
+       |]
        """.stripMargin)
-    .withFallback(ConfigFactory.load("application"))
+    .withFallback(ConfigFactory.load())
 }
 
 

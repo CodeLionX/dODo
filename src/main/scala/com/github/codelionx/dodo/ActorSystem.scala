@@ -4,12 +4,14 @@ import akka.cluster.Cluster
 import com.typesafe.config.{Config, ConfigFactory}
 
 import scala.concurrent.Await
-
-import scala.language.postfixOps
-import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration._
+import scala.language.postfixOps
+
 
 object ActorSystem {
+
+  def defaultConfiguration: Config = ConfigFactory.load()
 
   def configuration(actorSystemName: String, actorSystemRole: String, host: String, port: Int, masterHost: String, masterPort: Int): Config = {
     ConfigFactory.parseString(
@@ -20,7 +22,7 @@ object ActorSystem {
          |  "akka://$actorSystemName@$masterHost:$masterPort"
          |]
        """.stripMargin)
-      .withFallback(ConfigFactory.load("application"))
+      .withFallback(ConfigFactory.load())
   }
 
   def actorSystem(actorSystemName: String, config: Config): akka.actor.ActorSystem = {

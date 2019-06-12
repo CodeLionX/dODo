@@ -5,12 +5,24 @@ import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies, Results}
 import com.github.codelionx.dodo.actors.SystemCoordinator
 import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
+import com.typesafe.config.{Config, ConfigFactory}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
-class ODDetectionSpec extends TestKit(AkkaActorSystem("ODDetectionSpec"))
+
+object ODDetectionSpec {
+  val config: Config = ConfigFactory.parseString(
+    """akka.remote.artery.canonical.hostname = "127.0.0.1"
+       |akka.remote.artery.canonical.port = "7880"
+       |akka.cluster.seed-nodes = [
+       |  "akka://ODDetectionSpec@127.0.0.1:7880"
+       |]
+     """.stripMargin)
+    .withFallback(ConfigFactory.load())
+}
+class ODDetectionSpec extends TestKit(AkkaActorSystem("ODDetectionSpec", ODDetectionSpec.config))
   with ImplicitSender
   with WordSpecLike
   with Matchers
