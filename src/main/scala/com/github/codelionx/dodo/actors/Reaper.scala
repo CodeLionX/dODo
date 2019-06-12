@@ -36,7 +36,7 @@ class Reaper extends Actor with ActorLogging {
 
   override def postStop(): Unit = {
     super.postStop()
-    log.info("Stopped {}", self.path)
+    log.info("Stopped reaper")
   }
 
   override def receive: Receive = {
@@ -49,10 +49,11 @@ class Reaper extends Actor with ActorLogging {
       if (watched.isEmpty) terminateSystem()
 
     case unexpected =>
-      log.error(s"ERROR: Unknown message: $unexpected")
+      log.error("ERROR: Unknown message: {}", unexpected)
   }
 
   def terminateSystem(): Unit = {
+    log.info("Terminating system as all actors died.")
     context.system.terminate()
   }
 }
