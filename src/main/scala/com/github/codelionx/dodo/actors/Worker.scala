@@ -3,11 +3,13 @@ package com.github.codelionx.dodo.actors
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
-import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.actors.ResultCollector.Results
+import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.collection.immutable.Queue
+import scala.concurrent.duration._
+import scala.language.postfixOps
 
 
 object Worker {
@@ -28,22 +30,38 @@ object Worker {
 
   case class ODFound(od: (Seq[Int], Seq[Int]))
 
+  // debugging
+  private val reportingInterval = 5 seconds
+
+  private case object ReportStatus
+
 }
 
 
-class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator{
+class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
 
   import Worker._
 
+
   private val settings = Settings(context.system)
 
+  private var itemsProcessed = 0L
+
   override def preStart(): Unit = {
-    log.info(s"Starting $name")
+    log.info("Starting {}", name)
     Reaper.watchWithDefault(self)
+
+    if (log.isDebugEnabled) {
+      import com.github.codelionx.dodo.GlobalImplicits._
+      import context.dispatcher
+      log.info("Debugging enabled: performing regular status reporting every {}", reportingInterval.pretty)
+      context.system.scheduler.schedule(reportingInterval, reportingInterval, self, ReportStatus)
+    }
+
   }
 
   override def postStop(): Unit =
-    log.info(s"Stopping $name")
+    log.info("Stopping {}. Processed {} items", name, itemsProcessed)
 
   override def receive: Receive = uninitialized
 
@@ -52,12 +70,17 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       sender ! GetTask
       context.become(workReady(table))
     case _ => log.info("Unknown message received")
+
+    case ReportStatus =>
+      log.debug("Worker uninitialized, waiting for data ref...")
+
   }
 
   def workReady(table: Array[TypedColumn[Any]]): Receive = {
     case CheckForEquivalency(oeToCheck) =>
       sender ! OrderEquivalent(oeToCheck, checkOrderEquivalent(table(oeToCheck._1), table(oeToCheck._2)))
       sender ! GetTask
+      itemsProcessed += 1
 
     case CheckForOD(odCandidates, reducedColumns) =>
       var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
@@ -80,7 +103,7 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
           } else {
             newCandidates ++= generateODCandidates(reducedColumns, odCandidate, leftSide = false)
           }
-          if (!foundOD || !settings.ocdComparability ) {
+          if (!foundOD || !settings.ocdComparability) {
             foundOCDs :+= substituteColumnNames(odCandidate, table)
           }
         }
@@ -88,8 +111,18 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       if (foundODs.nonEmpty || foundOCDs.nonEmpty) {
         resultCollector ! Results(foundODs, foundOCDs)
       }
+      itemsProcessed += odCandidates.length
       sender ! ODsToCheck(odCandidates, newCandidates)
       sender ! GetTask
+
+    case ReportStatus =>
+      val statusMsg = itemsProcessed match {
+        case i if i > 1000 * 1000 * 1000 => s"${i / 1000 / 1000 / 1000}M"
+        case i if i > 1000 * 1000 => s"${i / 1000 / 1000}M"
+        case i if i > 1000 => s"${i / 1000}k"
+        case i => i
+      }
+      log.debug("Processed {} items", statusMsg)
 
     case _ => log.info("Unknown message received")
   }
