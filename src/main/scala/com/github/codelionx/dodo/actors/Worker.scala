@@ -67,8 +67,8 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
   def uninitialized: Receive = {
     case DataRef(table) =>
-      val timeout = requestNextTask(sender)
-      context.become(workReady(table, timeout))
+      sender ! GetTask
+      context.become(workReady(table))
 
     case ReportStatus =>
       log.debug("Worker uninitialized, waiting for data ref...")
@@ -76,16 +76,14 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
     case _ => log.info("Unknown message received")
   }
 
-  def workReady(table: Array[TypedColumn[Any]], timeoutCancellable: Cancellable): Receive = {
+  def workReady(table: Array[TypedColumn[Any]]): Receive = {
     case CheckForEquivalency(oeToCheck) =>
-      timeoutCancellable.cancel()
       sender ! OrderEquivalent(oeToCheck, checkOrderEquivalent(table(oeToCheck._1), table(oeToCheck._2)))
+      sender ! GetTask
       itemsProcessed += 1
-      val timeout = requestNextTask(sender)
-      context.become(workReady(table, timeout))
+      context.become(workReady(table))
 
     case CheckForOD(odCandidates, reducedColumns) =>
-      timeoutCancellable.cancel()
       var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
       var foundODs: Seq[(Seq[String], Seq[String])] = Seq.empty
       var foundOCDs: Seq[(Seq[String], Seq[String])] = Seq.empty
@@ -116,13 +114,8 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       }
       itemsProcessed += odCandidates.length
       sender ! ODsToCheck(odCandidates, newCandidates)
-      val timeout = requestNextTask(sender)
-      context.become(workReady(table, timeout))
-
-    case GetTaskTimeout(master) =>
-      log.warning("No task received from master, trying again")
-      val timeout = requestNextTask(master)
-      context.become(workReady(table, timeout))
+      sender ! GetTask
+      context.become(workReady(table))
 
     case ReportStatus =>
       val statusMsg = itemsProcessed match {
@@ -138,11 +131,5 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
   def substituteColumnNames(dependency: (Seq[Int], Seq[Int]), table: Array[TypedColumn[Any]]): (Seq[String], Seq[String]) = {
     dependency._1.map(table(_).name) -> dependency._2.map(table(_).name)
-  }
-
-  def requestNextTask(master: ActorRef): Cancellable = {
-    master ! GetTask
-    import context.dispatcher
-    context.system.scheduler.scheduleOnce(5 seconds, self, GetTaskTimeout(master))
   }
 }

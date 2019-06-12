@@ -5,7 +5,7 @@ import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.DataHolder.{DataRef, GetDataRef}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
 import com.github.codelionx.dodo.actors.SystemCoordinator.Finished
-import com.github.codelionx.dodo.actors.Worker.{CheckForEquivalency, CheckForOD, GetTask, ODsToCheck, OrderEquivalent}
+import com.github.codelionx.dodo.actors.Worker._
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
 
@@ -27,6 +27,8 @@ object ODMaster {
 class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: ActorRef) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
 
   import ODMaster._
+
+
   private val settings = Settings(context.system)
   private val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
     context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
@@ -36,6 +38,8 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
 
   private var odsToCheck: Queue[(Seq[Int], Seq[Int])] = Queue.empty
   private var waitingForODStatus: Set[Queue[(Seq[Int], Seq[Int])]] = Set.empty
+
+  private var idleWorkers: Seq[ActorRef] = Seq.empty
 
   override def preStart(): Unit = {
     log.info("Starting {}", name)
@@ -59,7 +63,9 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
       }
 
       log.debug("Looking for constant columns and generating column tuples for equality checking")
-      val orderEquivalencies = Array.fill(table.length){Seq.empty[Int]}
+      val orderEquivalencies = Array.fill(table.length) {
+        Seq.empty[Int]
+      }
       val columnIndexTuples = table.indices.combinations(2).map(l => l.head -> l(1))
 
       reducedColumns = table.indices.toSet
@@ -73,21 +79,20 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
   }
 
   def pruning(table: Array[TypedColumn[Any]], orderEquivalencies: Array[Seq[Int]], columnIndexTuples: Iterator[(Int, Int)]): Receive = {
-    case GetTask =>
-      if(columnIndexTuples.isEmpty) {
-        // TODO: Remember to send task once all pruning answers are in and the state has been changed
-        log.warning("TODO: no task scheduling implemented in this branch")
-      }
-      else {
-        var nextTuple = columnIndexTuples.next()
-        while (!(reducedColumns.contains(nextTuple._1) && reducedColumns.contains(nextTuple._2)) && columnIndexTuples.nonEmpty) {
-          nextTuple = columnIndexTuples.next()
-        }
+    case GetTask if columnIndexTuples.isEmpty =>
+      log.debug("Caching idle worker {}", sender.path.name)
+      idleWorkers :+= sender
 
-        log.debug("Scheduling task to check equivalence to worker {}", sender.path.name)
-        sender ! CheckForEquivalency(nextTuple)
-        pendingPruningResponses += 1
+    case GetTask if columnIndexTuples.nonEmpty =>
+      var nextTuple = columnIndexTuples.next()
+      while (!(reducedColumns.contains(nextTuple._1) && reducedColumns.contains(nextTuple._2)) && columnIndexTuples.nonEmpty) {
+        nextTuple = columnIndexTuples.next()
       }
+
+      log.debug("Scheduling task to check equivalence to worker {}", sender.path.name)
+      sender ! CheckForEquivalency(nextTuple)
+      pendingPruningResponses += 1
+
 
     case OrderEquivalent(od, isOrderEquiv) =>
       if (isOrderEquiv) {
@@ -102,12 +107,36 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
           (map, ind) => map + (ind -> orderEquivalencies(ind))
         )
         resultCollector ! OrderEquivalencies(
-          equivalenceClasses.map{ case (key, cols) =>
+          equivalenceClasses.map { case (key, cols) =>
             table(key).name -> cols.map(table(_).name)
           }
         )
-        log.debug("Generating first candidates and starting search")
+        log.info("Generating first candidates and starting search")
         odsToCheck ++= generateFirstCandidates(reducedColumns)
+
+        // sending work to idleWorkers
+        if (odsToCheck.isEmpty) {
+          log.error("No OCD candidates generated!")
+          systemCoordinator ! Finished
+
+        } else {
+          val queueLength = odsToCheck.length
+          val workers = idleWorkers.length
+          val batchLength = math.min(
+            queueLength / workers,
+            settings.maxBatchSize
+          )
+          idleWorkers.foreach(worker => {
+            val (workerODs, newQueue) = odsToCheck.splitAt(batchLength)
+            log.debug("Scheduling {} of {} items to check OCD to idle worker {}", workerODs.length, queueLength, worker.path.name)
+            worker ! CheckForOD(workerODs, reducedColumns)
+
+            odsToCheck = newQueue
+            waitingForODStatus += workerODs
+          })
+          idleWorkers = Seq.empty
+        }
+
         context.become(findingODs(table))
       }
 
@@ -116,19 +145,31 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
 
   def findingODs(table: Array[TypedColumn[Any]]): Receive = {
     case GetTask =>
-      if (odsToCheck.nonEmpty) {
-        val batchLength = math.min(math.max(odsToCheck.length / nWorkers, odsToCheck.length), settings.maxBatchSize)
-        val (workerODs, newQueue) = odsToCheck.splitAt(batchLength)
-        odsToCheck = newQueue
-
-        log.debug("Scheduling task to check OCD to worker {}", sender.path.name)
-        sender ! CheckForOD(workerODs, reducedColumns)
-        waitingForODStatus += workerODs
+      dequeueBatch() match {
+        case Some(workerODs) =>
+          log.debug("Scheduling task to check OCD to worker {}", sender.path.name)
+          sender ! CheckForOD(workerODs, reducedColumns)
+          waitingForODStatus += workerODs
+        case None =>
+          log.debug("Caching worker {} as idle because work queue is empty", sender.path.name)
+          idleWorkers :+= sender
       }
 
     case ODsToCheck(originalODs, newODs) =>
       odsToCheck ++= newODs
       waitingForODStatus -= originalODs
+      if (odsToCheck.nonEmpty && idleWorkers.nonEmpty) {
+        idleWorkers = idleWorkers.filter(worker => {
+          dequeueBatch() match {
+            case Some(work) =>
+              log.debug("Scheduling task to check OCD to idle worker {}", worker.path.name)
+              worker ! CheckForOD(work, reducedColumns)
+              waitingForODStatus += work
+              false
+            case None => true
+          }
+        })
+      }
       if (waitingForODStatus.isEmpty && odsToCheck.isEmpty) {
         log.info("Found all ODs")
         systemCoordinator ! Finished
@@ -145,5 +186,20 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
 
     reducedColumns --= constColumns
     constColumns
+  }
+
+  def dequeueBatch(): Option[Queue[(Seq[Int], Seq[Int])]] = {
+    if (odsToCheck.isEmpty) {
+      None
+    } else {
+      val queueLength = odsToCheck.length
+      val batchLength = math.min(
+        queueLength,
+        settings.maxBatchSize
+      )
+      val (workerODs, newQueue) = odsToCheck.splitAt(batchLength)
+      odsToCheck = newQueue
+      Some(workerODs)
+    }
   }
 }
