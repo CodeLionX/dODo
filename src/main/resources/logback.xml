@@ -9,7 +9,7 @@
 
     <appender name="FILE_DODO" class="ch.qos.logback.core.FileAppender">
         <file>dodo.log</file>
-        <append>true</append>
+        <append>false</append>
         <encoder>
             <pattern>[%d{HH:mm:ss.SSS} %-5level] %60.60X{akkaSource:-local}| %msg%n</pattern>
         </encoder>
