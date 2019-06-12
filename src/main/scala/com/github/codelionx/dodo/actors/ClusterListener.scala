@@ -51,16 +51,18 @@ class ClusterListener extends Actor with ActorLogging {
 
   def internalReceive(members: Seq[Member]): Receive = {
     case MemberUp(node) =>
+      log.debug("New node ({}) joined the cluster", node)
       context.become(internalReceive((members :+ node).sorted))
 
     case MemberRemoved(node, _) =>
+      log.debug("Node ({}) left the cluster", node)
       context.become(internalReceive(members.filterNot(_ == node)))
 
     case UnreachableMember(node) =>
-      log.info(s"$node detected unreachable")
+      log.info("Node ({}) detected unreachable", node)
 
     case ReachableMember(node) =>
-      log.info(s"$node detected reachable again")
+      log.info("Node ({}) detected reachable again", node)
 
     case GetLeftNeighbor if members.length >= 2 =>
       getLeftNeighbor(members)
@@ -73,7 +75,7 @@ class ClusterListener extends Actor with ActorLogging {
         .recover(sendError)
 
     case GetLeftNeighbor | GetRightNeighbor if members.length < 2 =>
-      log.warning(s"Cluster size too small for neighbor operations: ${members.length}")
+      log.warning("Cluster size too small for neighbor operations: {}", members.length)
       sendError.apply(new ClusterStateException(s"Cluster size is too small: only ${members.length} of 2 members"))
   }
 
