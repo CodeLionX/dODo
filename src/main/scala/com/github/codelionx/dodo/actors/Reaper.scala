@@ -29,15 +29,11 @@ class Reaper extends Actor with ActorLogging {
 
   val watched: ArrayBuffer[ActorRef] = ArrayBuffer.empty[ActorRef]
 
-  override def preStart(): Unit = {
-    super.preStart()
-    log.info("Started reaper at {}", self.path)
-  }
+  override def preStart(): Unit =
+    log.info("Started {} at {}", name, self.path)
 
-  override def postStop(): Unit = {
-    super.postStop()
-    log.info("Stopped reaper")
-  }
+  override def postStop(): Unit =
+    log.info("Stopped {}", name)
 
   override def receive: Receive = {
     case WatchMe(ref) =>
@@ -49,7 +45,7 @@ class Reaper extends Actor with ActorLogging {
       if (watched.isEmpty) terminateSystem()
 
     case unexpected =>
-      log.error("ERROR: Unknown message: {}", unexpected)
+      log.error("Unknown message: {}", unexpected)
   }
 
   def terminateSystem(): Unit = {
