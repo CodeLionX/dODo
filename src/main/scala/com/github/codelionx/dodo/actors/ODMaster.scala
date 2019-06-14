@@ -1,6 +1,6 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props, ReceiveTimeout}
+import akka.actor.{Actor, ActorLogging, ActorRef, NotInfluenceReceiveTimeout, Props, ReceiveTimeout}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, SubscribeAck}
 import com.github.codelionx.dodo.Settings
@@ -26,11 +26,11 @@ object ODMaster {
 
   case class FindODs(dataHolder: ActorRef)
 
-  case object GetWorkLoad
-  case class WorkLoad(queueSize: Int)
-  case class StealWork(amount: Int)
-  case class SendWork(work: Queue[(Seq[Int], Seq[Int])])
-  case object AckWorkReceived
+  case object GetWorkLoad extends NotInfluenceReceiveTimeout
+  case class WorkLoad(queueSize: Int) extends NotInfluenceReceiveTimeout
+  case class StealWork(amount: Int) extends NotInfluenceReceiveTimeout
+  case class SendWork(work: Queue[(Seq[Int], Seq[Int])]) extends NotInfluenceReceiveTimeout
+  case object AckWorkReceived extends NotInfluenceReceiveTimeout
 }
 
 
@@ -50,8 +50,10 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
   private var waitingForODStatus: Map[ActorRef, Queue[(Seq[Int], Seq[Int])]] = Map.empty
 
   private var othersWorkloads: Seq[(Int, ActorRef)] = Seq.empty
+  private var waitingForWorkloads: Boolean = false
+  private var lastWorkThief: ActorRef = null
 
-  val workStealingMediator = DistributedPubSub(context.system).mediator
+  val workStealingMediator: ActorRef = DistributedPubSub(context.system).mediator
   workStealingMediator ! Subscribe("workStealing", self)
 
   override def preStart(): Unit = {
@@ -155,13 +157,24 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         if (odsToCheck.isEmpty) {
           othersWorkloads = Seq.empty
           workStealingMediator ! Publish("workStealing", GetWorkLoad)
+          waitingForWorkloads = true
           context.setReceiveTimeout(1 second)
         }
       }
 
+    case GetWorkLoad =>
+      if (lastWorkThief == null) {
+        sender ! WorkLoad(odsToCheck.length)
+      }
+      else {
+        log.info("{} is already sending work to somebody else right now", self.path.name)
+      }
+
     case WorkLoad(queueSize: Int) =>
       othersWorkloads :+ (queueSize, sender)
-    case ReceiveTimeout =>
+
+    case ReceiveTimeout if waitingForWorkloads =>
+      waitingForWorkloads = false
       context.setReceiveTimeout(Duration.Undefined)
       val sortedWorkloads = othersWorkloads.sorted
       val averageWl: Int = sortedWorkloads.foldLeft(0)(_ + _._1)/(sortedWorkloads.size + 1)
@@ -174,18 +187,27 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         }
       }
 
+    case ReceiveTimeout if !waitingForWorkloads && lastWorkThief != null =>
+      context.setReceiveTimeout(Duration.Undefined)
+      odsToCheck ++= waitingForODStatus(lastWorkThief)
+      waitingForODStatus -= lastWorkThief
+      lastWorkThief = null
+      // TODO: refine technique of how to handle message loss
+
     case StealWork(amount: Int) =>
       val (stolenQueue, newQueue) = odsToCheck.splitAt(amount)
       odsToCheck = newQueue
       waitingForODStatus += (sender -> stolenQueue)
       sender ! SendWork(stolenQueue)
-      // TODO: set some kind of timeout to check whether the queue was received
+      lastWorkThief = sender
+      context.setReceiveTimeout(2 seconds)
 
     case SendWork(stolenQueue) =>
       odsToCheck ++= stolenQueue
       sender ! AckWorkReceived
 
     case AckWorkReceived =>
+      lastWorkThief = null
       waitingForODStatus -= sender
 
     case ODsToCheck(originalODs, newODs) =>
