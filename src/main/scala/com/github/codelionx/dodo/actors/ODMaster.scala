@@ -11,7 +11,6 @@ import com.github.codelionx.dodo.actors.SystemCoordinator.Finished
 import com.github.codelionx.dodo.actors.Worker.{CheckForEquivalency, CheckForOD, GetTask, ODsToCheck, OrderEquivalent}
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
-import com.sun.org.apache.xpath.internal.functions.FuncFalse
 
 import scala.collection.immutable.Queue
 import scala.concurrent.duration._
@@ -72,7 +71,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
       clusterListener ! GetNumberOfNodes
     case NumberOfNodes(number) =>
       context.become(uninitialized(number <= 1))
-    //TODO: case FindODs(dataHolder):
+    //TODO: case FindODs(dataHolder): while still in this state
     case _ => log.info("Unknown message received")
   }
 
