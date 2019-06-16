@@ -8,6 +8,7 @@ import akka.stream.ActorMaterializer
 import akka.stream.QueueOfferResult.{Dropped, Enqueued, QueueClosed}
 import akka.stream.scaladsl.SourceQueueWithComplete
 import akka.stream.scaladsl.Tcp.IncomingConnection
+import com.github.codelionx.dodo.actors.Reaper
 import com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol._
 import com.github.codelionx.dodo.types.TypedColumn
 
@@ -50,9 +51,12 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
   )
 
   val sourceQueue: SourceQueueWithComplete[DataOverStream] = connection.handleWith(actorConnector)
-  log.info(s"DataStreamServant for connection from ${connection.remoteAddress} ready")
+  log.debug("DataStreamServant for connection from {} ready", connection.remoteAddress)
 
-  override def postStop(): Unit = log.info(s"DataStreamServant for connection from ${connection.remoteAddress} stopped")
+  override def preStart(): Unit = Reaper.watchWithDefault(self)
+
+  override def postStop(): Unit =
+    log.debug("DataStreamServant for connection from {} stopped", connection.remoteAddress)
 
   override def receive: Receive = {
 
@@ -66,7 +70,7 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
       context.become(handleEnqueing())
 
     case Failure(cause) =>
-      log.error(s"Error processing incoming request: $cause, ${cause.getCause}")
+      log.error("Error processing incoming request: {}, {}", cause, cause.getCause)
       sourceQueue.fail(cause)
       context.stop(self)
 
@@ -86,12 +90,15 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
       context.stop(self)
 
     case Failure(cause) =>
-      log.error(s"Streaming failed to deliver data, because $cause")
+      log.error("Streaming failed to deliver data, because {}", cause)
       context.stop(self)
 
     case Dropped if retries > 0 =>
-      log.warning(s"Enqueued data message was dropped, trying again" +
-        s"(${3 - retries + 1} / $MAXIMUM_NUMBER_OF_RETRIES retries)")
+      log.warning(
+        "Enqueued data message was dropped, trying again ({} / {} retries)",
+        3 - retries + 1,
+        MAXIMUM_NUMBER_OF_RETRIES
+      )
 
       context.system.scheduler.scheduleOnce(1 second) {
         sourceQueue.offer(dataMsg) pipeTo self
@@ -99,12 +106,12 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
       }
 
     case Dropped =>
-      sourceQueue.fail(new RuntimeException(s"all $MAXIMUM_NUMBER_OF_RETRIES retries failed!"))
-      log.error(s"Could not send data after $MAXIMUM_NUMBER_OF_RETRIES retries")
+      sourceQueue.fail(new RuntimeException("all $MAXIMUM_NUMBER_OF_RETRIES retries failed!"))
+      log.error("Could not send data after {} retries", MAXIMUM_NUMBER_OF_RETRIES)
       context.stop(self)
 
     case StreamComplete =>
-      log.info("Stream closed. Stopping servant")
+      log.info("Stream closed.")
       sender ! StreamACK
       context.stop(self)
   }
@@ -112,7 +119,7 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
   def waitingForClose: Receive = {
 
     case StreamComplete =>
-      log.info("Data was streamed! Stopping servant")
+      log.info("Data was streamed!")
       sender ! StreamACK
       context.stop(self)
   }
