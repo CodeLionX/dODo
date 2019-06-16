@@ -114,12 +114,12 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         log.info("Generating first candidates and starting search")
         odsToCheck ++= generateFirstCandidates(reducedColumns)
 
-        // sending work to idleWorkers
         if (odsToCheck.isEmpty) {
           log.error("No OCD candidates generated!")
           systemCoordinator ! Finished
 
-        } else {
+        } else if (idleWorkers.nonEmpty) {
+          // sending work to idleWorkers
           val queueLength = odsToCheck.length
           val workers = idleWorkers.length
           val batchLength = math.min(
