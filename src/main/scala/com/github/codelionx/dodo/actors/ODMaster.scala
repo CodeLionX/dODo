@@ -55,7 +55,8 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
   private var othersWorkloads: Seq[(Int, ActorRef)] = Seq.empty
 
   val workStealingMediator: ActorRef = DistributedPubSub(context.system).mediator
-  workStealingMediator ! Subscribe("workStealing", self)
+  val workStealingTopic = "workStealing"
+  workStealingMediator ! Subscribe(workStealingTopic, self)
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")
@@ -68,7 +69,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
   override def receive: Receive = unsubscribed
 
   def unsubscribed: Receive = {
-    case SubscribeAck(Subscribe("workStealing", None, `self`)) =>
+    case SubscribeAck(Subscribe(`workStealingTopic`, None, `self`)) =>
       log.info("subscribed to the workStealing mediator")
       clusterListener ! GetNumberOfNodes
     case NumberOfNodes(number) =>
@@ -98,7 +99,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         context.become(pruning(table, orderEquivalencies, columnIndexTuples))
       }
       else {
-        workStealingMediator ! Publish("workStealing", GetWorkLoad)
+        workStealingMediator ! Publish(`workStealingTopic`, GetWorkLoad)
         context.become(findingODs(table))
       }
 
@@ -157,7 +158,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         waitingForODStatus += (sender -> workerODs)
         if (odsToCheck.isEmpty) {
           othersWorkloads = Seq.empty
-          workStealingMediator ! Publish("workStealing", GetWorkLoad)
+          workStealingMediator ! Publish(`workStealingTopic`, GetWorkLoad)
           import context.dispatcher
           context.system.scheduler.scheduleOnce(1 second, self, WorkLoadTimeout)
         }
