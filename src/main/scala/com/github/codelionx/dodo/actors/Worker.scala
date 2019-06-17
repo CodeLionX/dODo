@@ -16,15 +16,15 @@ object Worker {
 
   def props(resultCollector: ActorRef): Props = Props(new Worker(resultCollector))
 
-  case object GetTask extends NotInfluenceReceiveTimeout
+  case object GetTask
 
   case class CheckForEquivalency(oeToCheck: (Int, Int))
 
-  case class OrderEquivalent(oe: (Int, Int), isOrderEquiv: Boolean) extends NotInfluenceReceiveTimeout
+  case class OrderEquivalent(oe: (Int, Int), isOrderEquiv: Boolean)
 
   case class CheckForOD(odToCheck: Queue[(Seq[Int], Seq[Int])], reducedColumns: Set[Int])
 
-  case class ODsToCheck(parentODs: Queue[(Seq[Int], Seq[Int])], newODs: Queue[(Seq[Int], Seq[Int])]) extends NotInfluenceReceiveTimeout
+  case class ODsToCheck(parentODs: Queue[(Seq[Int], Seq[Int])], newODs: Queue[(Seq[Int], Seq[Int])])
 
   case class ODFound(od: (Seq[Int], Seq[Int]))
 
