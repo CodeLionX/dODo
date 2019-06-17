@@ -74,7 +74,9 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
       clusterListener ! GetNumberOfNodes
     case NumberOfNodes(number) =>
       context.become(uninitialized(number <= 1))
-    //TODO: case FindODs(dataHolder): while still in this state
+    case FindODs(dataHolder) =>
+      import context.dispatcher
+      context.system.scheduler.scheduleOnce(100 milliseconds, self, FindODs(dataHolder))
     case _ => log.info("Unknown message received")
   }
 
