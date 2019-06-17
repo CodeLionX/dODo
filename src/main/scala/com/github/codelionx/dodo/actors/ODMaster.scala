@@ -203,7 +203,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
     case AckWorkReceived =>
       waitingForODStatus -= sender
 
-    case ODsToCheck(originalODs, newODs) =>
+    case ODsToCheck(newODs) =>
       odsToCheck ++= newODs
       waitingForODStatus -= sender
       if (waitingForODStatus.isEmpty && odsToCheck.isEmpty) {

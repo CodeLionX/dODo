@@ -24,7 +24,7 @@ object Worker {
 
   case class CheckForOD(odToCheck: Queue[(Seq[Int], Seq[Int])], reducedColumns: Set[Int])
 
-  case class ODsToCheck(parentODs: Queue[(Seq[Int], Seq[Int])], newODs: Queue[(Seq[Int], Seq[Int])])
+  case class ODsToCheck(newODs: Queue[(Seq[Int], Seq[Int])])
 
   case class ODFound(od: (Seq[Int], Seq[Int]))
 
@@ -88,7 +88,7 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       if (foundODs.nonEmpty || foundOCDs.nonEmpty) {
         resultCollector ! Results(foundODs, foundOCDs)
       }
-      sender ! ODsToCheck(odCandidates, newCandidates)
+      sender ! ODsToCheck(newCandidates)
       sender ! GetTask
 
     case _ => log.info("Unknown message received")
