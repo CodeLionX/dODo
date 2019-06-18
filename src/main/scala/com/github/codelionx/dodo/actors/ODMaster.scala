@@ -17,7 +17,6 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 
 
-
 object ODMaster {
 
   val name = "odmaster"
@@ -27,11 +26,17 @@ object ODMaster {
   case class FindODs(dataHolder: ActorRef)
 
   case object GetWorkLoad
+
   case class WorkLoad(queueSize: Int)
+
   case object WorkLoadTimeout
+
   case class StealWork(amount: Int)
+
   case class SendWork(work: Queue[(Seq[Int], Seq[Int])])
+
   case object AckWorkReceived
+
   case class AckReceivedTimeout(workThief: ActorRef)
 
 }
@@ -49,21 +54,21 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
   private val dataHolder: ActorRef = context.actorOf(DataHolder.props(DefaultValues.HOST), DataHolder.name)
   private val clusterListener: ActorRef = context.actorOf(ClusterListener.props, ClusterListener.name)
   private val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
-  context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
+    context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
   )
 
 
   private var reducedColumns: Set[Int] = Set.empty
   private var pendingPruningResponses = 0
 
-  private var odsToCheck: Queue[(Seq[Int], Seq[Int])] = Queue.empty
-  private var waitingForODStatus: Map[ActorRef, Queue[(Seq[Int], Seq[Int])]] = Map.empty
+  private var odCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
+  private var pendingOdCandidates: Map[ActorRef, Queue[(Seq[Int], Seq[Int])]] = Map.empty
+  private var idleWorkers: Seq[ActorRef] = Seq.empty
 
-  private var othersWorkloads: Seq[(Int, ActorRef)] = Seq.empty
+  private var otherWorkloads: Seq[(Int, ActorRef)] = Seq.empty
 
-  val workStealingMediator: ActorRef = DistributedPubSub(context.system).mediator
-  val workStealingTopic = "workStealing"
-
+  private val workStealingMediator: ActorRef = DistributedPubSub(context.system).mediator
+  private val workStealingTopic = "workStealing"
 
   override def preStart(): Unit = {
     log.info("Starting {}", name)
@@ -80,31 +85,35 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
     case SubscribeAck(Subscribe(`workStealingTopic`, None, `self`)) =>
       log.info("subscribed to the workStealing mediator")
       clusterListener ! GetNumberOfNodes
+
     case NumberOfNodes(number) =>
       dataHolder ! LoadDataFromDisk(settings.inputFilePath)
       context.become(uninitialized(number <= 1))
+
     case _ => log.info("Unknown message received")
   }
 
-  def uninitialized(first:Boolean): Receive = {
+  def uninitialized(first: Boolean): Receive = {
     case DataRef(table) =>
       if (table.length <= 1) {
         log.info("No order dependencies due to length of table")
         shutdown()
-      }
-      if (first) {
+      } else if (first) {
         log.debug("Looking for constant columns and generating column tuples for equality checking")
-        val orderEquivalencies = Array.fill(table.length){Seq.empty[Int]}
+        val orderEquivalencies = Array.fill(table.length) {
+          Seq.empty[Int]
+        }
         val columnIndexTuples = table.indices.combinations(2).map(l => l.head -> l(1))
 
         reducedColumns = table.indices.toSet
         val constColumns = pruneConstColumns(table)
-        log.debug("Found {} constant columns, starting pruning", constColumns.length)
         resultCollector ! ConstColumns(constColumns.map(table(_).name))
+
+        log.debug("Found {} constant columns, starting pruning", constColumns.length)
         workers.foreach(actor => actor ! DataRef(table))
         context.become(pruning(table, orderEquivalencies, columnIndexTuples))
       } else {
-        getWorkloads()
+        requestWorkloads()
         context.become(findingODs(table))
       }
 
@@ -112,20 +121,19 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
   }
 
   def pruning(table: Array[TypedColumn[Any]], orderEquivalencies: Array[Seq[Int]], columnIndexTuples: Iterator[(Int, Int)]): Receive = {
-    case GetTask =>
-      if(columnIndexTuples.isEmpty) {
-        // TODO: Remember to send task once all pruning answers are in and the state has been changed
-        log.warning("TODO: no task scheduling implemented in this branch")
-      } else {
-        var nextTuple = columnIndexTuples.next()
-        while (!(reducedColumns.contains(nextTuple._1) && reducedColumns.contains(nextTuple._2)) && columnIndexTuples.nonEmpty) {
-          nextTuple = columnIndexTuples.next()
-        }
+    case GetTask if columnIndexTuples.isEmpty =>
+      log.debug("Caching idle worker {}", sender.path.name)
+      idleWorkers :+= sender
 
-        log.debug("Scheduling task to check equivalence to worker {}", sender.path.name)
-        sender ! CheckForEquivalency(nextTuple)
-        pendingPruningResponses += 1
+    case GetTask if columnIndexTuples.nonEmpty =>
+      var nextTuple = columnIndexTuples.next()
+      while (!(reducedColumns.contains(nextTuple._1) && reducedColumns.contains(nextTuple._2)) && columnIndexTuples.nonEmpty) {
+        nextTuple = columnIndexTuples.next()
       }
+
+      log.debug("Scheduling task to check equivalence to worker {}", sender.path.name)
+      sender ! CheckForEquivalency(nextTuple)
+      pendingPruningResponses += 1
 
     case OrderEquivalent(od, isOrderEquiv) =>
       if (isOrderEquiv) {
@@ -140,12 +148,36 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
           (map, ind) => map + (ind -> orderEquivalencies(ind))
         )
         resultCollector ! OrderEquivalencies(
-          equivalenceClasses.map{ case (key, cols) =>
+          equivalenceClasses.map { case (key, cols) =>
             table(key).name -> cols.map(table(_).name)
           }
         )
-        log.debug("Generating first candidates and starting search")
-        odsToCheck ++= generateFirstCandidates(reducedColumns)
+        log.info("Generating first candidates and starting search")
+        odCandidates ++= generateFirstCandidates(reducedColumns)
+
+        if (odCandidates.isEmpty) {
+          log.error("No OCD candidates generated!")
+          shutdown()
+
+        } else if (idleWorkers.nonEmpty) {
+          // sending work to idleWorkers
+          val queueLength = odCandidates.length
+          val workers = idleWorkers.length
+          val batchLength = math.min(
+            queueLength / workers,
+            settings.maxBatchSize
+          )
+          idleWorkers.foreach(worker => {
+            val (workerODs, newQueue) = odCandidates.splitAt(batchLength)
+            log.debug("Scheduling {} of {} items to check OCD to idle worker {}", workerODs.length, queueLength, worker.path.name)
+            worker ! CheckForOD(workerODs, reducedColumns)
+
+            odCandidates = newQueue
+            pendingOdCandidates += worker -> workerODs
+          })
+          idleWorkers = Seq.empty
+        }
+
         context.become(findingODs(table))
       }
 
@@ -154,38 +186,34 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
 
   def findingODs(table: Array[TypedColumn[Any]]): Receive = {
     case GetTask =>
-      if (odsToCheck.nonEmpty) {
-        val batchLength = math.min(math.max(odsToCheck.length / nWorkers, odsToCheck.length), settings.maxBatchSize)
-        val (workerODs, newQueue) = odsToCheck.splitAt(batchLength)
-        odsToCheck = newQueue
-
-        log.debug("Scheduling task to check OCD to worker {}", sender.path.name)
-        sender ! CheckForOD(workerODs, reducedColumns)
-        waitingForODStatus += (sender -> workerODs)
-        if (odsToCheck.isEmpty) {
-          othersWorkloads = Seq.empty
-          getWorkloads()
-        }
+      dequeueBatch() match {
+        case Some(workerODs) =>
+          log.debug("Scheduling task to check OCD to worker {}", sender.path.name)
+          sender ! CheckForOD(workerODs, reducedColumns)
+          pendingOdCandidates += sender -> workerODs
+        case None =>
+          log.debug("Caching worker {} as idle because work queue is empty", sender.path.name)
+          idleWorkers :+= sender
+          requestWorkloads()
       }
 
     case GetWorkLoad =>
       if (sender != self) {
-        sender ! WorkLoad(odsToCheck.length)
+        sender ! WorkLoad(odCandidates.length)
         log.info("Asked for workload")
       }
 
     case WorkLoad(queueSize: Int) =>
       log.info("Received workload of size {} from {}", queueSize, sender)
-      othersWorkloads :+= (queueSize, sender)
+      otherWorkloads :+= (queueSize, sender)
 
     case WorkLoadTimeout =>
-      val sortedWorkloads = othersWorkloads.sorted
+      val sortedWorkloads = otherWorkloads.sorted
       val sum = sortedWorkloads.map(_._1).sum
-      val averageWl: Int = sum/(sortedWorkloads.size + 1)
+      val averageWl: Int = sum / (sortedWorkloads.size + 1)
       var ownWorkLoad = 0
       log.info("Received workloadTimeout: averageWl={}", averageWl)
       for ((otherSize, otherRef) <- sortedWorkloads) {
-        //val amountToSteal = math.min(math.min(otherSize - averageWl, averageWl - ownWorkLoad), 1000)
         val amountToSteal = Seq(otherSize - averageWl, averageWl - ownWorkLoad, 1000).min
         if (amountToSteal > 0) {
           otherRef ! StealWork(amountToSteal)
@@ -196,33 +224,45 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
 
     case AckReceivedTimeout(workThief) =>
       // TODO: refine technique of how to handle message loss
-      if (waitingForODStatus.contains(workThief)) {
+      if (pendingOdCandidates.contains(workThief)) {
         log.info("Work got lost")
-        odsToCheck ++= waitingForODStatus(workThief)
-        waitingForODStatus -= workThief
+        odCandidates ++= pendingOdCandidates(workThief)
+        pendingOdCandidates -= workThief
       }
 
     case StealWork(amount: Int) =>
-      val (stolenQueue, newQueue) = odsToCheck.splitAt(amount)
-      odsToCheck = newQueue
-      waitingForODStatus += (sender -> stolenQueue)
+      val (stolenQueue, newQueue) = odCandidates.splitAt(amount)
+      odCandidates = newQueue
+      pendingOdCandidates += (sender -> stolenQueue)
       log.info("Sending work to {}", sender)
       sender ! SendWork(stolenQueue)
       import context.dispatcher
       context.system.scheduler.scheduleOnce(5 seconds, self, AckReceivedTimeout(sender))
 
     case SendWork(stolenQueue) =>
-      odsToCheck ++= stolenQueue
+      odCandidates ++= stolenQueue
       log.info("Received work from {}", sender)
       sender ! AckWorkReceived
 
     case AckWorkReceived =>
-      waitingForODStatus -= sender
+      pendingOdCandidates -= sender
 
     case ODsToCheck(newODs) =>
-      odsToCheck ++= newODs
-      waitingForODStatus -= sender
-      if (waitingForODStatus.isEmpty && odsToCheck.isEmpty) {
+      odCandidates ++= newODs
+      pendingOdCandidates -= sender
+      if (odCandidates.nonEmpty && idleWorkers.nonEmpty) {
+        idleWorkers = idleWorkers.filter(worker => {
+          dequeueBatch() match {
+            case Some(work) =>
+              log.debug("Scheduling task to check OCD to idle worker {}", worker.path.name)
+              worker ! CheckForOD(work, reducedColumns)
+              pendingOdCandidates += worker -> work
+              false
+            case None => true
+          }
+        })
+      }
+      if (pendingOdCandidates.isEmpty && odCandidates.isEmpty) {
         log.info("Found all ODs")
         shutdown()
       }
@@ -245,10 +285,27 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
     context.stop(self)
   }
 
-  def getWorkloads(): Unit = {
+  def requestWorkloads(): Unit = {
+    log.info("Asking for workloads")
+    otherWorkloads = Seq.empty
     workStealingMediator ! Publish(workStealingTopic, GetWorkLoad)
+
     import context.dispatcher
     context.system.scheduler.scheduleOnce(3 second, self, WorkLoadTimeout)
-    log.info("Asking for workloads")
+  }
+
+  def dequeueBatch(): Option[Queue[(Seq[Int], Seq[Int])]] = {
+    if (odCandidates.isEmpty) {
+      None
+    } else {
+      val queueLength = odCandidates.length
+      val batchLength = math.min(
+        queueLength,
+        settings.maxBatchSize
+      )
+      val (workerODs, newQueue) = odCandidates.splitAt(batchLength)
+      odCandidates = newQueue
+      Some(workerODs)
+    }
   }
 }
