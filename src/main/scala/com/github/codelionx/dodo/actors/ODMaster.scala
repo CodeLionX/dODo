@@ -1,14 +1,14 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, SubscribeAck}
 import com.github.codelionx.dodo.Settings
+import com.github.codelionx.dodo.Settings.DefaultValues
 import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, NumberOfNodes}
-import com.github.codelionx.dodo.actors.DataHolder.{DataRef, GetDataRef}
+import com.github.codelionx.dodo.actors.DataHolder.{DataRef, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
-import com.github.codelionx.dodo.actors.SystemCoordinator.Finished
-import com.github.codelionx.dodo.actors.Worker.{CheckForEquivalency, CheckForOD, GetTask, ODsToCheck, OrderEquivalent}
+import com.github.codelionx.dodo.actors.Worker._
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
 
@@ -22,7 +22,7 @@ object ODMaster {
 
   val name = "odmaster"
 
-  def props(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: ActorRef): Props = Props(new ODMaster(nWorkers, resultCollector, systemCoordinator))
+  def props(): Props = Props(new ODMaster)
 
   case class FindODs(dataHolder: ActorRef)
 
@@ -37,14 +37,21 @@ object ODMaster {
 }
 
 
-class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: ActorRef) extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
+class ODMaster() extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
 
   import ODMaster._
+
+
   private val settings = Settings(context.system)
-  private val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
-    context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
-  )
+  private val nWorkers: Int = settings.workers
+
+  private val resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
+  private val dataHolder: ActorRef = context.actorOf(DataHolder.props(DefaultValues.HOST), DataHolder.name)
   private val clusterListener: ActorRef = context.actorOf(ClusterListener.props, ClusterListener.name)
+  private val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
+  context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
+  )
+
 
   private var reducedColumns: Set[Int] = Set.empty
   private var pendingPruningResponses = 0
@@ -56,11 +63,12 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
 
   val workStealingMediator: ActorRef = DistributedPubSub(context.system).mediator
   val workStealingTopic = "workStealing"
-  workStealingMediator ! Subscribe(workStealingTopic, self)
+
 
   override def preStart(): Unit = {
     log.info(s"Starting $name")
     Reaper.watchWithDefault(self)
+    workStealingMediator ! Subscribe(workStealingTopic, self)
   }
 
   override def postStop(): Unit =
@@ -73,22 +81,16 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
       log.info("subscribed to the workStealing mediator")
       clusterListener ! GetNumberOfNodes
     case NumberOfNodes(number) =>
+      dataHolder ! LoadDataFromDisk(settings.inputFilePath)
       context.become(uninitialized(number <= 1))
-    case FindODs(dataHolder) =>
-      import context.dispatcher
-      context.system.scheduler.scheduleOnce(100 milliseconds, self, FindODs(dataHolder))
     case _ => log.info("Unknown message received")
   }
 
   def uninitialized(first:Boolean): Receive = {
-    case FindODs(dataHolder) =>
-      dataHolder ! GetDataRef
-
     case DataRef(table) =>
       if (table.length <= 1) {
         log.info("No order dependencies due to length of table")
-        systemCoordinator ! Finished
-        context.stop(self)
+        shutdown()
       }
       if (first) {
         val orderEquivalencies = Array.fill(table.length){Seq.empty[Int]}
@@ -101,7 +103,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         context.become(pruning(table, orderEquivalencies, columnIndexTuples))
       }
       else {
-        workStealingMediator ! Publish(`workStealingTopic`, GetWorkLoad)
+        workStealingMediator ! Publish(workStealingTopic, GetWorkLoad)
         context.become(findingODs(table))
       }
 
@@ -160,7 +162,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         waitingForODStatus += (sender -> workerODs)
         if (odsToCheck.isEmpty) {
           othersWorkloads = Seq.empty
-          workStealingMediator ! Publish(`workStealingTopic`, GetWorkLoad)
+          workStealingMediator ! Publish(workStealingTopic, GetWorkLoad)
           import context.dispatcher
           context.system.scheduler.scheduleOnce(1 second, self, WorkLoadTimeout)
         }
@@ -180,7 +182,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
         val amountToSteal = math.min(master._1 - averageWl, averageWl - ownWorkLoad)
         if (amountToSteal > 0) {
           master._2 ! StealWork(amountToSteal)
-          ownWorkLoad -= amountToSteal
+          ownWorkLoad += amountToSteal
         }
       }
 
@@ -211,7 +213,7 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
       waitingForODStatus -= sender
       if (waitingForODStatus.isEmpty && odsToCheck.isEmpty) {
         log.info("Found all ODs")
-        systemCoordinator ! Finished
+        shutdown()
       }
 
     case _ => log.info("Unknown message received")
@@ -225,5 +227,10 @@ class ODMaster(nWorkers: Int, resultCollector: ActorRef, systemCoordinator: Acto
 
     reducedColumns --= constColumns
     constColumns
+  }
+
+  def shutdown(): Unit = {
+    context.children.foreach(_ ! PoisonPill)
+    context.stop(self)
   }
 }

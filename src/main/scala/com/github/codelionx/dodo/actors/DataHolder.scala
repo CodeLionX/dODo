@@ -32,8 +32,6 @@ object DataHolder {
 
   case class FetchDataFrom(otherDataHolder: ActorSelection)
 
-  case object DataLoaded
-
   // sidechannel address request-response pair
   case object GetSidechannelAddress extends Serializable
 
@@ -120,7 +118,7 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
       val port = openSidechannel(data)
 
       log.info(s"Loaded data from $localFilename. $name is ready")
-      sender ! DataLoaded
+      sender ! DataRef(data)
       context.become(dataReady(data, port))
 
     case FetchDataFrom(otherDataHolder) =>
@@ -167,17 +165,17 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
       sender ! StreamACK
 
       val port = openSidechannel(data)
-      originalSender ! DataLoaded
+      originalSender ! DataRef(data)
       context.become(dataReady(data, port))
   }
 
   def dataReady(relation: Array[TypedColumn[Any]], boundPort: Int): Receive = {
 
     case LoadDataFromDisk(_) =>
-      sender ! DataLoaded
+      sender ! DataRef(relation)
 
     case FetchDataFrom(_) =>
-      sender ! DataLoaded
+      sender ! DataRef(relation)
 
     case GetSidechannelAddress =>
       sender ! SidechannelAddress(InetSocketAddress.createUnresolved(publicHostname, boundPort))
