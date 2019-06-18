@@ -32,7 +32,7 @@ object ODMaster {
   case class StealWork(amount: Int)
   case class SendWork(work: Queue[(Seq[Int], Seq[Int])])
   case object AckWorkReceived
-  case class CheckAckWorkReceived(workThief: ActorRef)
+  case class AckReceivedTimeout(workThief: ActorRef)
 
 }
 
@@ -175,23 +175,29 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
       }
 
     case WorkLoad(queueSize: Int) =>
-      othersWorkloads :+ (queueSize, sender)
+      log.info("Received workload of size {} from {}", queueSize, sender)
+      othersWorkloads :+= (queueSize, sender)
 
     case WorkLoadTimeout =>
       val sortedWorkloads = othersWorkloads.sorted
-      val averageWl: Int = sortedWorkloads.foldLeft(0)(_ + _._1)/(sortedWorkloads.size + 1)
+      val sum = sortedWorkloads.map(_._1).sum
+      val averageWl: Int = sum/(sortedWorkloads.size + 1)
       var ownWorkLoad = 0
-      for (master <- sortedWorkloads) {
-        val amountToSteal = math.min(master._1 - averageWl, averageWl - ownWorkLoad)
+      log.info("Received workloadTimeout: averageWl={}", averageWl)
+      for ((otherSize, otherRef) <- sortedWorkloads) {
+        //val amountToSteal = math.min(math.min(otherSize - averageWl, averageWl - ownWorkLoad), 1000)
+        val amountToSteal = Seq(otherSize - averageWl, averageWl - ownWorkLoad, 1000).min
         if (amountToSteal > 0) {
-          master._2 ! StealWork(amountToSteal)
+          otherRef ! StealWork(amountToSteal)
+          log.info("Stealing {} elements from {}", amountToSteal, otherRef)
           ownWorkLoad += amountToSteal
         }
       }
 
-    case CheckAckWorkReceived(workThief) =>
+    case AckReceivedTimeout(workThief) =>
       // TODO: refine technique of how to handle message loss
       if (waitingForODStatus.contains(workThief)) {
+        log.info("Work got lost")
         odsToCheck ++= waitingForODStatus(workThief)
         waitingForODStatus -= workThief
       }
@@ -200,12 +206,14 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
       val (stolenQueue, newQueue) = odsToCheck.splitAt(amount)
       odsToCheck = newQueue
       waitingForODStatus += (sender -> stolenQueue)
+      log.info("Sending work to {}", sender)
       sender ! SendWork(stolenQueue)
       import context.dispatcher
-      context.system.scheduler.scheduleOnce(2 seconds, self, CheckAckWorkReceived(sender))
+      context.system.scheduler.scheduleOnce(5 seconds, self, AckReceivedTimeout(sender))
 
     case SendWork(stolenQueue) =>
       odsToCheck ++= stolenQueue
+      log.info("Received work from {}", sender)
       sender ! AckWorkReceived
 
     case AckWorkReceived =>
