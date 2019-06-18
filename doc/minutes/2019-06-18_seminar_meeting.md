@@ -17,6 +17,24 @@
 - for the final presentation: change speaker roles (start / end)
 - Slides, Q&A and Presentation all perfect!
 
+## System Coordinator
+
+- we do not need the `SystemCoordinator` actor anymore
+- downing and time measurement responsibility is taken over by master actor
+- actual evaluation time measurements will be taken with external tools
+
+## Downing Protocol
+
+- Each master actor has to decide if the system finished all work.
+- Start downing protocol when
+  - no worker processes any items (empty pending candidate queue)
+  - empty local work queue
+  - work stealing reveals that other nodes have no work as well
+- Downing protocol (voting):
+  - tbd
+- If cluster decides on algorithm finished: each master stops all actors in his own actor system (so reaper can terminate the system)
+
+
 ## Next Tasks
 
 | Who?  | Until when?   | What? |
@@ -27,3 +45,4 @@
 |  |  | Create protocol document for work stealing protocol |
 |  |  | Create protocol document for state synchronization protocol |
 |  |  | Protocol document: how do we handle joining nodes or overdue messages during the recovery phase? |
+|  |  | Specify Downing Protocol |
