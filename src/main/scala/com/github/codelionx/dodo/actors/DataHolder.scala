@@ -62,7 +62,7 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
     implicit val system: ActorSystem = context.system
 
     val handler: IncomingConnection => Unit = connection => {
-      log.info(s"Received connection from ${connection.remoteAddress}")
+      log.info("Received connection from {}", connection.remoteAddress)
       // handle incoming requests in own actor
       context.actorOf(DataStreamServant.props(data, connection), s"streamServant-${r.nextInt()}")
     }
@@ -79,14 +79,14 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
             // no specific error in reasonable amount of time: assuming a successful binding
             port
           case error =>
-            log.warning(s"Binding to port $port failed (${error.getMessage}). Trying again on ${port + 1}")
+            log.warning("Binding to port {} failed ({}). Trying again on {}", port, error.getMessage, port + 1)
             tryBindTo(port + 1)
         }
       }
     }
 
     val port = tryBindTo(DefaultValues.PORT + 1000)
-    log.info(s"Accepting incoming connections to $port")
+    log.info("Accepting incoming connections to {}", port)
     port
   }
 
@@ -117,8 +117,9 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
       val data = CSVParser(settings.parsing).parse(localFilename)
       val port = openSidechannel(data)
 
-      log.info(s"Loaded data from $localFilename. $name is ready")
+      log.info("Loaded data from {}. {} is ready", localFilename, name)
       sender ! DataRef(data)
+
       context.become(dataReady(data, port))
 
     case FetchDataFrom(otherDataHolder) =>
@@ -133,7 +134,7 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
       context.become(handleStreamResult(originalSender, socketAddress))
 
     case DataNotReady =>
-      log.error(s"Other data holder (${sender.path}) is no ready yet.")
+      log.error("Other data holder ({}) is no ready yet.", sender.path)
       throw new RuntimeException("Fetch data from another data holder failover logic is not implemented yet!")
   }
 
@@ -148,7 +149,7 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
       context.become(receivedData(originalSender, data))
 
     case Failure(cause) =>
-      log.error(s"Error processing fetch data request: $cause. Trying again.")
+      log.error("Error processing fetch data request: {}. Trying again.", cause)
       import context.dispatcher
       context.system.scheduler.scheduleOnce(
         2 second,
@@ -181,14 +182,14 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
       sender ! SidechannelAddress(InetSocketAddress.createUnresolved(publicHostname, boundPort))
 
     case GetDataRef =>
-      log.info(s"Serving data to ${sender.path}")
+      log.info("Serving data to {}", sender.path)
       sender ! DataRef(relation)
   }
 
   def withCommonNotReady(block: Receive): Receive = {
     val commonNotReady: Receive = {
       case GetDataRef | GetSidechannelAddress =>
-        log.warning(s"Request to serve data from uninitialized $name")
+        log.warning("Request to serve data from uninitialized {}", name)
         sender ! DataNotReady
     }
 

@@ -109,6 +109,3 @@ data
 
 # intellij (openjdk) pid files
 .attach_pid*
-
-# log file
-log.txt

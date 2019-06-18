@@ -66,13 +66,13 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
 
 
   override def preStart(): Unit = {
-    log.info(s"Starting $name")
+    log.info("Starting {}", name)
     Reaper.watchWithDefault(self)
     workStealingMediator ! Subscribe(workStealingTopic, self)
   }
 
   override def postStop(): Unit =
-    log.info(s"Stopping $name")
+    log.info("Stopping {}", name)
 
   override def receive: Receive = unsubscribed
 
@@ -93,35 +93,36 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
         shutdown()
       }
       if (first) {
+        log.debug("Looking for constant columns and generating column tuples for equality checking")
         val orderEquivalencies = Array.fill(table.length){Seq.empty[Int]}
         val columnIndexTuples = table.indices.combinations(2).map(l => l.head -> l(1))
 
         reducedColumns = table.indices.toSet
         val constColumns = pruneConstColumns(table)
+        log.debug("Found {} constant columns, starting pruning", constColumns.length)
         resultCollector ! ConstColumns(constColumns.map(table(_).name))
         workers.foreach(actor => actor ! DataRef(table))
         context.become(pruning(table, orderEquivalencies, columnIndexTuples))
-      }
-      else {
+      } else {
         getWorkloads()
         context.become(findingODs(table))
       }
 
-    case _ => log.info("Unknown message received")
+    case m => log.debug("Unknown message received: {}", m)
   }
 
   def pruning(table: Array[TypedColumn[Any]], orderEquivalencies: Array[Seq[Int]], columnIndexTuples: Iterator[(Int, Int)]): Receive = {
     case GetTask =>
       if(columnIndexTuples.isEmpty) {
         // TODO: Remember to send task once all pruning answers are in and the state has been changed
-      }
-      else {
+        log.warning("TODO: no task scheduling implemented in this branch")
+      } else {
         var nextTuple = columnIndexTuples.next()
         while (!(reducedColumns.contains(nextTuple._1) && reducedColumns.contains(nextTuple._2)) && columnIndexTuples.nonEmpty) {
           nextTuple = columnIndexTuples.next()
         }
 
-        log.debug(s"Scheduling task to check equivalence of $nextTuple to worker ${sender.path.name}")
+        log.debug("Scheduling task to check equivalence to worker {}", sender.path.name)
         sender ! CheckForEquivalency(nextTuple)
         pendingPruningResponses += 1
       }
@@ -143,11 +144,12 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
             table(key).name -> cols.map(table(_).name)
           }
         )
+        log.debug("Generating first candidates and starting search")
         odsToCheck ++= generateFirstCandidates(reducedColumns)
         context.become(findingODs(table))
       }
 
-    case _ => log.info("Unknown message received")
+    case _ => log.debug("Unknown message received")
   }
 
   def findingODs(table: Array[TypedColumn[Any]]): Receive = {
@@ -157,7 +159,7 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
         val (workerODs, newQueue) = odsToCheck.splitAt(batchLength)
         odsToCheck = newQueue
 
-        log.debug(s"Scheduling task to check OCD $workerODs to worker ${sender.path.name}")
+        log.debug("Scheduling task to check OCD to worker {}", sender.path.name)
         sender ! CheckForOD(workerODs, reducedColumns)
         waitingForODStatus += (sender -> workerODs)
         if (odsToCheck.isEmpty) {
