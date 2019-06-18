@@ -34,7 +34,6 @@ object Worker {
   val reportingInterval: FiniteDuration = 5 seconds
 
   private case object ReportStatus
-
 }
 
 
@@ -57,7 +56,6 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       log.info("Debugging enabled: performing regular status reporting every {}", reportingInterval.pretty)
       context.system.scheduler.schedule(reportingInterval, reportingInterval, self, ReportStatus)
     }
-
   }
 
   override def postStop(): Unit =
