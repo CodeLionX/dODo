@@ -103,7 +103,7 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
         context.become(pruning(table, orderEquivalencies, columnIndexTuples))
       }
       else {
-        workStealingMediator ! Publish(workStealingTopic, GetWorkLoad)
+        getWorkloads()
         context.become(findingODs(table))
       }
 
@@ -162,14 +162,15 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
         waitingForODStatus += (sender -> workerODs)
         if (odsToCheck.isEmpty) {
           othersWorkloads = Seq.empty
-          workStealingMediator ! Publish(workStealingTopic, GetWorkLoad)
-          import context.dispatcher
-          context.system.scheduler.scheduleOnce(1 second, self, WorkLoadTimeout)
+          getWorkloads()
         }
       }
 
     case GetWorkLoad =>
-      sender ! WorkLoad(odsToCheck.length)
+      if (sender != self) {
+        sender ! WorkLoad(odsToCheck.length)
+        log.info("Asked for workload")
+      }
 
     case WorkLoad(queueSize: Int) =>
       othersWorkloads :+ (queueSize, sender)
@@ -232,5 +233,12 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
   def shutdown(): Unit = {
     context.children.foreach(_ ! PoisonPill)
     context.stop(self)
+  }
+
+  def getWorkloads(): Unit = {
+    workStealingMediator ! Publish(workStealingTopic, GetWorkLoad)
+    import context.dispatcher
+    context.system.scheduler.scheduleOnce(3 second, self, WorkLoadTimeout)
+    log.info("Asking for workloads")
   }
 }
