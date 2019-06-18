@@ -1,6 +1,6 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
 import com.github.codelionx.dodo.actors.ResultCollector.Results
@@ -29,8 +29,6 @@ object Worker {
   case class ODsToCheck(parentODs: Queue[(Seq[Int], Seq[Int])], newODs: Queue[(Seq[Int], Seq[Int])])
 
   case class ODFound(od: (Seq[Int], Seq[Int]))
-
-  case class GetTaskTimeout(master: ActorRef)
 
   // debugging
   val reportingInterval: FiniteDuration = 5 seconds
@@ -81,7 +79,6 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       sender ! OrderEquivalent(oeToCheck, checkOrderEquivalent(table(oeToCheck._1), table(oeToCheck._2)))
       sender ! GetTask
       itemsProcessed += 1
-      context.become(workReady(table))
 
     case CheckForOD(odCandidates, reducedColumns) =>
       var newCandidates: Queue[(Seq[Int], Seq[Int])] = Queue.empty
@@ -115,7 +112,6 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       itemsProcessed += odCandidates.length
       sender ! ODsToCheck(odCandidates, newCandidates)
       sender ! GetTask
-      context.become(workReady(table))
 
     case ReportStatus =>
       val statusMsg = itemsProcessed match {
