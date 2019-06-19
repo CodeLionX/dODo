@@ -6,15 +6,24 @@ import akka.cluster.Cluster
 import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
 import com.github.codelionx.dodo.actors.{Reaper, SystemCoordinator}
 import org.backuity.clist
-import org.backuity.clist.CliMain
+import org.backuity.clist.{Cli, Command}
 
 import scala.language.postfixOps
 
 
-object Main extends CliMain[Unit](
-  name = "dODo - Distributed Order dependency Discovery Optimization",
-  description = "discover order dependencies through order compatibility dependencies in CSV files"
-) {
+object Main extends Command(
+  name = "dODo",
+  description = "Distributed Order dependency Discovery Optimization - " +
+    "discover order dependencies through order compatibility dependencies in CSV files"
+) with ApplicationManifestHelper {
+
+  def main(args: Array[String]): Unit = {
+    Cli.parse(args)
+      .withProgramName(appName.getOrElse("dodo"))
+      .version(appVersion.getOrElse("0.0.0"), "--version")
+      .withHelpCommand("--help")
+      .withCommand(this) { _ => run() }
+  }
 
   private final val actorSystemName = "dodo-system"
 
@@ -39,7 +48,9 @@ object Main extends CliMain[Unit](
   )
 
   var inputFile: Option[File] = clist.opt[Option[File]](
-    description = "path to the input CSV file",
+    description = "path to the input CSV file. Required for the seed node! "
+      + "If not specified, this node tries to fetch the data from another node "
+      + "(potentially the seed node).",
     default = None
   )
 
