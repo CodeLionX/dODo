@@ -31,9 +31,9 @@ object ODMaster {
 
   case object WorkLoadTimeout
 
-  case class StealWork(amount: Int)
+  case class WorkToSend(amount: Int)
 
-  case class SendWork(work: Queue[(Seq[Int], Seq[Int])])
+  case class StolenWork(work: Queue[(Seq[Int], Seq[Int])])
 
   case object AckWorkReceived
 
@@ -90,7 +90,7 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
       dataHolder ! LoadDataFromDisk(settings.inputFilePath)
       context.become(uninitialized(number <= 1))
 
-    case _ => log.info("Unknown message received")
+    case m => log.debug("Unknown message received: {}", m)
   }
 
   def uninitialized(first: Boolean): Receive = {
@@ -113,8 +113,9 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
         workers.foreach(actor => actor ! DataRef(table))
         context.become(pruning(table, orderEquivalencies, columnIndexTuples))
       } else {
+        workers.foreach(actor => actor ! DataRef(table))
         requestWorkloads()
-        context.become(findingODs(table))
+        context.become(workStealing(table))
       }
 
     case m => log.debug("Unknown message received: {}", m)
@@ -181,7 +182,7 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
         context.become(findingODs(table))
       }
 
-    case _ => log.debug("Unknown message received")
+    case m => log.debug("Unknown message received: {}", m)
   }
 
   def findingODs(table: Array[TypedColumn[Any]]): Receive = {
@@ -195,6 +196,7 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
           log.debug("Caching worker {} as idle because work queue is empty", sender.path.name)
           idleWorkers :+= sender
           requestWorkloads()
+          context.become(workStealing(table))
       }
 
     case GetWorkLoad =>
@@ -202,6 +204,47 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
         sender ! WorkLoad(odCandidates.length)
         log.info("Asked for workload")
       }
+
+    case AckReceivedTimeout(workThief) =>
+      // TODO: refine technique of how to handle message loss
+      if (pendingOdCandidates.contains(workThief)) {
+        log.info("Work got lost")
+        odCandidates ++= pendingOdCandidates(workThief)
+        pendingOdCandidates -= workThief
+      }
+
+    case WorkToSend(amount: Int) =>
+      // in case the length of odCandidates has shrunk since it was send to the WorkThief
+      val updatedAmount = math.min(amount, odCandidates.length / 2)
+      val (stolenQueue, newQueue) = odCandidates.splitAt(updatedAmount)
+      odCandidates = newQueue
+      pendingOdCandidates += (sender -> stolenQueue)
+      log.info("Sending work to {}", sender)
+      sender ! StolenWork(stolenQueue)
+      import context.dispatcher
+      context.system.scheduler.scheduleOnce(5 seconds, self, AckReceivedTimeout(sender))
+
+    case StolenWork(stolenQueue) =>
+      odCandidates ++= stolenQueue
+      log.info("Received work from {}", sender)
+      sender ! AckWorkReceived
+
+    case AckWorkReceived =>
+      pendingOdCandidates -= sender
+
+    case ODsToCheck(newODs) =>
+      odCandidates ++= newODs
+      pendingOdCandidates -= sender
+      if (odCandidates.nonEmpty && idleWorkers.nonEmpty) {
+        sendWorkToIdleWorkers()
+      }
+
+    case m => log.debug("Unknown message received: {}", m)
+  }
+
+  def workStealing(table: Array[TypedColumn[Any]]): Receive = {
+    case GetTask =>
+      idleWorkers :+= sender
 
     case WorkLoad(queueSize: Int) =>
       log.info("Received workload of size {} from {}", queueSize, sender)
@@ -216,58 +259,31 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
       for ((otherSize, otherRef) <- sortedWorkloads) {
         val amountToSteal = Seq(otherSize - averageWl, averageWl - ownWorkLoad, 1000).min
         if (amountToSteal > 0) {
-          otherRef ! StealWork(amountToSteal)
+          otherRef ! WorkToSend(amountToSteal)
           log.info("Stealing {} elements from {}", amountToSteal, otherRef)
           ownWorkLoad += amountToSteal
         }
       }
-
-    case AckReceivedTimeout(workThief) =>
-      // TODO: refine technique of how to handle message loss
-      if (pendingOdCandidates.contains(workThief)) {
-        log.info("Work got lost")
-        odCandidates ++= pendingOdCandidates(workThief)
-        pendingOdCandidates -= workThief
+      if (sum == 0 && pendingOdCandidates.isEmpty) {
+        // TODO: make sure others don't have anything pending anymore as well
+        shutdown()
       }
 
-    case StealWork(amount: Int) =>
-      val (stolenQueue, newQueue) = odCandidates.splitAt(amount)
-      odCandidates = newQueue
-      pendingOdCandidates += (sender -> stolenQueue)
-      log.info("Sending work to {}", sender)
-      sender ! SendWork(stolenQueue)
-      import context.dispatcher
-      context.system.scheduler.scheduleOnce(5 seconds, self, AckReceivedTimeout(sender))
-
-    case SendWork(stolenQueue) =>
+    case StolenWork(stolenQueue) =>
       odCandidates ++= stolenQueue
       log.info("Received work from {}", sender)
       sender ! AckWorkReceived
-
-    case AckWorkReceived =>
-      pendingOdCandidates -= sender
+      sendWorkToIdleWorkers()
+      context.become(findingODs(table))
 
     case ODsToCheck(newODs) =>
       odCandidates ++= newODs
       pendingOdCandidates -= sender
       if (odCandidates.nonEmpty && idleWorkers.nonEmpty) {
-        idleWorkers = idleWorkers.filter(worker => {
-          dequeueBatch() match {
-            case Some(work) =>
-              log.debug("Scheduling task to check OCD to idle worker {}", worker.path.name)
-              worker ! CheckForOD(work, reducedColumns)
-              pendingOdCandidates += worker -> work
-              false
-            case None => true
-          }
-        })
-      }
-      if (pendingOdCandidates.isEmpty && odCandidates.isEmpty) {
-        log.info("Found all ODs")
-        shutdown()
+        sendWorkToIdleWorkers()
       }
 
-    case _ => log.info("Unknown message received")
+    case m => log.debug("Unknown message received: {}", m)
   }
 
   def pruneConstColumns(table: Array[TypedColumn[Any]]): Seq[Int] = {
@@ -292,6 +308,19 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
 
     import context.dispatcher
     context.system.scheduler.scheduleOnce(3 second, self, WorkLoadTimeout)
+  }
+
+  def sendWorkToIdleWorkers(): Unit = {
+    idleWorkers = idleWorkers.filter(worker => {
+      dequeueBatch() match {
+        case Some(work) =>
+          log.debug("Scheduling task to check OCD to idle worker {}", worker.path.name)
+          worker ! CheckForOD(work, reducedColumns)
+          pendingOdCandidates += worker -> work
+          false
+        case None => true
+      }
+    })
   }
 
   def dequeueBatch(): Option[Queue[(Seq[Int], Seq[Int])]] = {
