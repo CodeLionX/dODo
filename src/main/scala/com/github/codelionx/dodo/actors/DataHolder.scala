@@ -8,7 +8,6 @@ import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Tcp
 import akka.stream.scaladsl.Tcp.{IncomingConnection, OutgoingConnection}
 import com.github.codelionx.dodo.Settings
-import com.github.codelionx.dodo.Settings.DefaultValues
 import com.github.codelionx.dodo.parsing.CSVParser
 import com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol._
 import com.github.codelionx.dodo.sidechannel.{ActorStreamConnector, DataStreamServant}
@@ -25,7 +24,7 @@ object DataHolder {
 
   val name = "dataholder"
 
-  def props(publicHostname: String): Props = Props(new DataHolder(publicHostname))
+  def props(): Props = Props[DataHolder]
 
   // load data commands and Ack messages
   case class LoadDataFromDisk(localFilename: String)
@@ -51,7 +50,7 @@ object DataHolder {
 
 }
 
-class DataHolder(publicHostname: String) extends Actor with ActorLogging {
+class DataHolder() extends Actor with ActorLogging {
 
   import DataHolder._
 
@@ -181,7 +180,7 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
       sender ! DataLoaded
 
     case GetSidechannelAddress =>
-      sender ! SidechannelAddress(InetSocketAddress.createUnresolved(publicHostname, boundPort))
+      sender ! SidechannelAddress(InetSocketAddress.createUnresolved(settings.sideChannel.hostname, boundPort))
 
     case GetDataRef =>
       log.info("Serving data to {}", sender.path)

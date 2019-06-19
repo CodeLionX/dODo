@@ -35,7 +35,7 @@ class SystemCoordinator extends Actor with ActorLogging with DependencyChecking 
 
   val nWorkers = settings.workers
   def resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
-  val dataHolder: ActorRef = context.actorOf(DataHolder.props(DefaultValues.HOST), DataHolder.name)
+  val dataHolder: ActorRef = context.actorOf(DataHolder.props(), DataHolder.name)
   val odMaster: ActorRef = context.actorOf(ODMaster.props(nWorkers, resultCollector, self), ODMaster.name)
 
   var startTime: LocalDateTime = _
