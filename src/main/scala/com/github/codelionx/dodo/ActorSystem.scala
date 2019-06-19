@@ -42,6 +42,9 @@ object ActorSystem {
          |  $hostnameString
          |  $portString
          |}
+         |com.github.codelionx.dodo.side-channel {
+         |  $hostnameString
+         |}
          |$seedNodeString
        """.stripMargin)
       .withFallback(ConfigFactory.defaultApplication())

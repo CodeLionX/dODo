@@ -70,8 +70,8 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
     }
 
     @tailrec
-    def tryBindTo(port: Int): Int = {
-      val future = Tcp().bind("0.0.0.0", port).runForeach(handler)
+    def tryBindTo(host: String, port: Int): Int = {
+      val future = Tcp().bind(host, port).runForeach(handler)
       Try {
         Await.result(future, 2 seconds)
       } match {
@@ -82,13 +82,14 @@ class DataHolder(publicHostname: String) extends Actor with ActorLogging {
             port
           case error =>
             log.warning("Binding to port {} failed ({}). Trying again on {}", port, error.getMessage, port + 1)
-            tryBindTo(port + 1)
+            tryBindTo(host, port + 1)
         }
       }
     }
 
-    val port = tryBindTo(DefaultValues.PORT + 1000)
-    log.info("Accepting incoming connections to {}", port)
+    val sidechannelSettings = settings.sideChannel
+    val port = tryBindTo(sidechannelSettings.hostname, sidechannelSettings.startingPort)
+    log.info("Accepting incoming connections to {}:{}", sidechannelSettings.hostname, port)
     port
   }
 
