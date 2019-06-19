@@ -24,7 +24,7 @@ object ODMaster {
   def props(): Props = Props(new ODMaster)
 
   case class FindODs(dataHolder: ActorRef)
-
+    
   case object GetWorkLoad
 
   case class WorkLoad(queueSize: Int)
@@ -87,6 +87,7 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
       clusterListener ! GetNumberOfNodes
 
     case NumberOfNodes(number) =>
+      log.info("number of nodes in cluster: {}", number)
       dataHolder ! LoadDataFromDisk(settings.inputFilePath)
       context.become(uninitialized(number <= 1))
 
@@ -98,7 +99,7 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
       if (table.length <= 1) {
         log.info("No order dependencies due to length of table")
         shutdown()
-      } else if (first) {
+      } else{
         log.debug("Looking for constant columns and generating column tuples for equality checking")
         val orderEquivalencies = Array.fill(table.length) {
           Seq.empty[Int]
@@ -111,17 +112,13 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
 
         log.debug("Found {} constant columns, starting pruning", constColumns.length)
         workers.foreach(actor => actor ! DataRef(table))
-        context.become(pruning(table, orderEquivalencies, columnIndexTuples))
-      } else {
-        workers.foreach(actor => actor ! DataRef(table))
-        requestWorkloads()
-        context.become(workStealing(table))
+        context.become(pruning(table, orderEquivalencies, columnIndexTuples, first))
       }
 
     case m => log.debug("Unknown message received: {}", m)
   }
 
-  def pruning(table: Array[TypedColumn[Any]], orderEquivalencies: Array[Seq[Int]], columnIndexTuples: Iterator[(Int, Int)]): Receive = {
+  def pruning(table: Array[TypedColumn[Any]], orderEquivalencies: Array[Seq[Int]], columnIndexTuples: Iterator[(Int, Int)], first:Boolean): Receive = {
     case GetTask if columnIndexTuples.isEmpty =>
       log.debug("Caching idle worker {}", sender.path.name)
       idleWorkers :+= sender
@@ -142,7 +139,7 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
         orderEquivalencies(od._1) :+= od._2
       }
       pendingPruningResponses -= 1
-      if (pendingPruningResponses == 0 && columnIndexTuples.isEmpty) {
+      if (pendingPruningResponses == 0 && columnIndexTuples.isEmpty && first) {
         log.info("Pruning done")
 
         val equivalenceClasses = reducedColumns.foldLeft(Map.empty[Int, Seq[Int]])(
@@ -180,6 +177,9 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
         }
 
         context.become(findingODs(table))
+      } else if (pendingPruningResponses == 0 && columnIndexTuples.isEmpty) {
+        requestWorkloads()
+        context.become(workStealing(table))
       }
 
     case m => log.debug("Unknown message received: {}", m)
