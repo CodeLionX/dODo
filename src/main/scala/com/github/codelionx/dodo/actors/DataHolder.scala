@@ -49,12 +49,20 @@ object DataHolder {
 
   case class DataRef(relation: Array[TypedColumn[Any]])
 
+  // exceptions
+  case class FetchDataException(cause: Throwable = null) extends RuntimeException(
+    "Neither left nor right neighbor could provide data. No dataset available!",
+    cause
+  )
+
 }
 
 class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
 
   import DataHolder._
 
+
+  private val userGuardian = "user"
 
   private val r: Random = new Random()
   private val settings = Settings(context.system)
@@ -133,7 +141,7 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
 
   def handleLeftNeighborResults(originalSender: ActorRef): Receive = withCommonNotReady {
     case LeftNeighbor(address) =>
-      val otherDataHolder = context.actorSelection(address / "user" / ODMaster.name / name)
+      val otherDataHolder = context.actorSelection(address / userGuardian / ODMaster.name / name)
       log.info("Asking left neighbour ({}) for sidechannel address", otherDataHolder)
       otherDataHolder ! GetSidechannelAddress
       context.become(handleFetchDataResult(originalSender, true))
@@ -147,14 +155,14 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
   // this is just the failover solution if the left neighbor does not send the data
   def handleRightNeighborResults(originalSender: ActorRef): Receive = withCommonNotReady {
     case RightNeighbor(address) =>
-      val otherDataHolder = context.actorSelection(address / "user" / ODMaster.name / name)
+      val otherDataHolder = context.actorSelection(address / userGuardian / ODMaster.name / name)
       log.info("Asking right neighbour ({}) for sidechannel address", otherDataHolder)
       otherDataHolder ! GetSidechannelAddress
       context.become(handleFetchDataResult(originalSender, false))
 
     case akka.actor.Status.Failure(f) =>
       log.error("Could not get right neighbor address, because {}", f)
-      throw new RuntimeException("Neither left nor right neighbor could provide data. No dataset available!")
+      throw FetchDataException(f)
   }
 
   def handleFetchDataResult(originalSender: ActorRef, isLeftNB: Boolean): Receive = withCommonNotReady {
@@ -167,9 +175,9 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
       clusterListener ! GetRightNeighbor
       context.become(handleRightNeighborResults(sender))
 
-    case DataNotReady if ! isLeftNB =>
+    case DataNotReady if !isLeftNB =>
       log.error("Right data holder ({}) is no ready yet, as well.", sender.path)
-      throw new RuntimeException("Neither left nor right neighbor could provide data. No dataset available!")
+      throw FetchDataException()
 
   }
 

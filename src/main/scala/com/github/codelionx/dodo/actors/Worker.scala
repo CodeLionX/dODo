@@ -116,9 +116,9 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
     case ReportStatus =>
       val statusMsg = itemsProcessed match {
-        case i if i > 10e9 => s"${(i / 10e9).toInt} B"
-        case i if i > 10e6 => s"${(i / 10e6).toInt} M"
-        case i if i > 10e3 => s"${(i / 10e3).toInt} k"
+        case i if i > 1e9 => s"${(i / 1e9).toInt} B"
+        case i if i > 1e6 => s"${(i / 1e6).toInt} M"
+        case i if i > 1e3 => s"${(i / 1e3).toInt} k"
         case i => i
       }
       log.debug("Processed {} items", statusMsg)

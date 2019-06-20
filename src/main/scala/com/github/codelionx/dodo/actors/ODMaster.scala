@@ -285,7 +285,11 @@ class ODMaster(inputFile: Option[File])
       if(sum > 0) {
         // there is work to steal, steal some from the busiest nodes
         for ((otherSize, otherRef) <- sortedWorkloads) {
-          val amountToSteal = Seq(otherSize - averageWl, averageWl - ownWorkLoad, 1000).min
+          val amountToSteal = Seq(
+            otherSize - averageWl,
+            averageWl - ownWorkLoad,
+            settings.workers * settings.maxBatchSize
+          ).min
           if (amountToSteal > 0) {
             otherRef ! WorkToSend(amountToSteal)
             log.info("Stealing {} elements from {}", amountToSteal, otherRef)
@@ -318,6 +322,8 @@ class ODMaster(inputFile: Option[File])
       if (odCandidates.nonEmpty && idleWorkers.nonEmpty) {
         sendWorkToIdleWorkers()
       }
+
+    case GetWorkLoad if sender == self => // ignore
 
     case m => log.debug("Unknown message received in `workStealing`: {}", m)
   }
