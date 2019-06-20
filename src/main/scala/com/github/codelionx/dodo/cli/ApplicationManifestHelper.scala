@@ -1,5 +1,4 @@
-package com.github.codelionx.dodo
-
+package com.github.codelionx.dodo.cli
 
 /**
   * Provides access to the application name and version written to the `MANIFEST.MF` during the build process.
