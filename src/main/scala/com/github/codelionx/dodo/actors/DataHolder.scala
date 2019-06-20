@@ -179,7 +179,7 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
       sender ! StreamACK
 
     case DataOverStream(data) =>
-      log.info("Received data over stream")
+      log.info("Received data over stream from {}", address)
       sender ! StreamACK
       context.become(receivedData(originalSender, data))
 
@@ -197,7 +197,7 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
   def receivedData(originalSender: ActorRef, data: Array[TypedColumn[Any]]): Receive = withCommonNotReady {
 
     case StreamComplete =>
-      log.info("Stream completed!")
+      log.info("Stream completed! {} is ready.", name)
       sender ! StreamACK
 
       val port = openSidechannel(data)
