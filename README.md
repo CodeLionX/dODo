@@ -65,3 +65,6 @@ The double quotes around the `run` command and the program arguments are necessa
 
 If you want to contribute to this project, you are more then welcome to do so.
 Please read the [contribution guidlines](./CONTRIBUTING.md) before submitting new issues or pull requests.
+
+## Helpul Commands
+`java -jar -Dcom.github.codelionx.dodo.input-file=data/flight_1k.csv -Dakka.remote.artery.canonical.port=7878 dodo-assembly-0.0.1.jar` 
