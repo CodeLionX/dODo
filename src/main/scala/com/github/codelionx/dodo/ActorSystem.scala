@@ -18,7 +18,8 @@ object ActorSystem {
                      host: Option[String],
                      port: Option[Int],
                      seedHost: Option[String],
-                     seedPort: Option[Int]
+                     seedPort: Option[Int],
+                     hasHeader: Option[Boolean]
                    ): Config = {
     val hostnameString = host match {
       case Some(name) => s"hostname = $name"
@@ -37,6 +38,10 @@ object ActorSystem {
         s"""akka.cluster.seed-nodes = ["akka://$actorSystemName@$sh:"$${akka.remote.artery.canonical.port}]"""
       case (None, None) => ""
     }
+    val parsingString = hasHeader match {
+      case Some(header) => s"com.github.codelionx.dodo.parsing.has-header = $header"
+      case None => ""
+    }
     ConfigFactory.parseString(
       s"""akka.remote.artery.canonical {
          |  $hostnameString
@@ -46,6 +51,7 @@ object ActorSystem {
          |  $hostnameString
          |}
          |$seedNodeString
+         |$parsingString
        """.stripMargin)
       .withFallback(ConfigFactory.defaultApplication())
       .withFallback(ConfigFactory.defaultReference())

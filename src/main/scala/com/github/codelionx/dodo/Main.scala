@@ -53,11 +53,16 @@ object Main extends Command(
     default = None
   )
 
+  var hasHeader: Option[Boolean] = clist.opt[Option[Boolean]](
+    description = "override the setting if the input CSV file has a header",
+    default = None
+  )
+
   def run(): Unit = {
 
     val system = ActorSystem.actorSystem(
       actorSystemName,
-      ActorSystem.configuration(actorSystemName, host, port, seedHost, seedPort)
+      ActorSystem.configuration(actorSystemName, host, port, seedHost, seedPort, hasHeader)
     )
 
     val cluster = Cluster(system)
