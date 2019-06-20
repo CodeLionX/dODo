@@ -1,12 +1,13 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props}
+import java.io.File
+
+import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props, Terminated}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, SubscribeAck}
 import com.github.codelionx.dodo.Settings
-import com.github.codelionx.dodo.Settings.DefaultValues
 import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, NumberOfNodes}
-import com.github.codelionx.dodo.actors.DataHolder.{DataRef, LoadDataFromDisk}
+import com.github.codelionx.dodo.actors.DataHolder.{DataNotReady, DataRef, FetchDataFromCluster, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
 import com.github.codelionx.dodo.actors.Worker._
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
@@ -21,7 +22,7 @@ object ODMaster {
 
   val name = "odmaster"
 
-  def props(): Props = Props(new ODMaster)
+  def props(inputFile: Option[File]): Props = Props(new ODMaster(inputFile))
 
   case class FindODs(dataHolder: ActorRef)
 
@@ -42,7 +43,11 @@ object ODMaster {
 }
 
 
-class ODMaster() extends Actor with ActorLogging with DependencyChecking with CandidateGenerator {
+class ODMaster(inputFile: Option[File])
+  extends Actor
+    with ActorLogging
+    with DependencyChecking
+    with CandidateGenerator {
 
   import ODMaster._
 
@@ -50,9 +55,9 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
   private val settings = Settings(context.system)
   private val nWorkers: Int = settings.workers
 
-  val resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
-  private val dataHolder: ActorRef = context.actorOf(DataHolder.props(DefaultValues.HOST), DataHolder.name)
   private val clusterListener: ActorRef = context.actorOf(ClusterListener.props, ClusterListener.name)
+  private val dataHolder: ActorRef = context.actorOf(DataHolder.props(clusterListener), DataHolder.name)
+  val resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
   val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
     context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
   )
@@ -83,11 +88,19 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
 
   def unsubscribed: Receive = {
     case SubscribeAck(Subscribe(`workStealingTopic`, None, `self`)) =>
-      log.info("subscribed to the workStealing mediator")
+      log.debug("subscribed to the workStealing mediator")
       clusterListener ! GetNumberOfNodes
 
     case NumberOfNodes(number) =>
-      dataHolder ! LoadDataFromDisk(settings.inputFilePath)
+      inputFile match {
+        case Some(file) =>
+          dataHolder ! LoadDataFromDisk(file)
+        case None if number > 1 =>
+          dataHolder ! FetchDataFromCluster
+        case None if number <= 1 =>
+          log.error("No input data file was specified and this node is the only cluster member: no dataset found!")
+          shutdown()
+      }
       context.become(uninitialized(number <= 1))
 
     case m => log.debug("Unknown message received: {}", m)
@@ -113,10 +126,16 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
         workers.foreach(actor => actor ! DataRef(table))
         context.become(pruning(table, orderEquivalencies, columnIndexTuples))
       } else {
+        log.debug("Initiating work stealing to get work")
         workers.foreach(actor => actor ! DataRef(table))
         requestWorkloads()
         context.become(workStealing(table))
       }
+
+    case DataNotReady | Terminated if sender == dataHolder =>
+      // todo: handle loading error of data holder
+      log.error("Data Holder has no data")
+      throw new RuntimeException("Loading data failed!")
 
     case m => log.debug("Unknown message received: {}", m)
   }

@@ -66,7 +66,7 @@ object Main extends Command(
 
       system.actorOf(Reaper.props, Reaper.name)
 
-      val master = system.actorOf(ODMaster.props(), ODMaster.name)
+      val master = system.actorOf(ODMaster.props(inputFile), ODMaster.name)
 
     }
 
