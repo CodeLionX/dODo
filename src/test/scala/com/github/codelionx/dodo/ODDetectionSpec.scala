@@ -2,9 +2,8 @@ package com.github.codelionx.dodo
 
 import akka.actor.{ActorRef, Props, ActorSystem => AkkaActorSystem}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
+import com.github.codelionx.dodo.actors.{ODMaster, Worker}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies, Results}
-import com.github.codelionx.dodo.actors.SystemCoordinator
-import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
 import com.typesafe.config.{Config, ConfigFactory}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
@@ -32,10 +31,10 @@ class ODDetectionSpec extends TestKit(AkkaActorSystem("ODDetectionSpec", ODDetec
 
     "find the right results" in {
       val probe = TestProbe()
-      val systemCoord = system.actorOf(Props(new SystemCoordinator() {
-        override def resultCollector: ActorRef = probe.ref
+      val master = system.actorOf(Props(new ODMaster() {
+        override val resultCollector: ActorRef = probe.ref
+        override val workers: Seq[ActorRef] = Seq(context.actorOf(Worker.props(probe.ref), s"${Worker.name}"))
       }))
-      systemCoord ! Initialize
 
       // Constant columns
       probe.expectMsg(ConstColumns(Seq("F")))

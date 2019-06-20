@@ -19,6 +19,9 @@ object ClusterListener {
   case object GetRightNeighbor
   case class RightNeighbor(address: RootActorPath)
 
+  case object GetNumberOfNodes
+  case class NumberOfNodes(number: Int)
+
   class ClusterStateException(message: String, cause: Throwable = null) extends RuntimeException(message, cause) {
     def this(cause: Throwable) = this(cause.getMessage, cause)
   }
@@ -63,6 +66,9 @@ class ClusterListener extends Actor with ActorLogging {
 
     case ReachableMember(node) =>
       log.info("Node ({}) detected reachable again", node)
+
+    case GetNumberOfNodes =>
+      sender ! NumberOfNodes(members.length)
 
     case GetLeftNeighbor if members.length >= 2 =>
       getLeftNeighbor(members)

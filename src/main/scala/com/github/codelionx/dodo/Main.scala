@@ -1,8 +1,7 @@
 package com.github.codelionx.dodo
 
 import akka.cluster.Cluster
-import com.github.codelionx.dodo.actors.SystemCoordinator.Initialize
-import com.github.codelionx.dodo.actors.{Reaper, SystemCoordinator}
+import com.github.codelionx.dodo.actors.{ODMaster, Reaper}
 
 import scala.language.postfixOps
 
@@ -21,8 +20,7 @@ object Main {
 
       system.actorOf(Reaper.props, Reaper.name)
 
-      val systemCoordinator = system.actorOf(SystemCoordinator.props(), SystemCoordinator.name)
-      systemCoordinator ! Initialize
+      val master = system.actorOf(ODMaster.props(), ODMaster.name)
 
     }
 
