@@ -50,10 +50,10 @@ class ODMaster() extends Actor with ActorLogging with DependencyChecking with Ca
   private val settings = Settings(context.system)
   private val nWorkers: Int = settings.workers
 
-  private val resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
+  val resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
   private val dataHolder: ActorRef = context.actorOf(DataHolder.props(DefaultValues.HOST), DataHolder.name)
   private val clusterListener: ActorRef = context.actorOf(ClusterListener.props, ClusterListener.name)
-  private val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
+  val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
     context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
   )
 
