@@ -265,7 +265,10 @@ class ODMaster(inputFile: Option[File])
     case m => log.debug("Unknown message received: {}", m)
   }
 
-  def findingODs(table: Array[TypedColumn[Any]]): Receive = {
+  def findingODs(
+                  table: Array[TypedColumn[Any]],
+                  ackReceivedCancallable: Cancellable = Cancellable.alreadyCancelled
+                ): Receive = {
     case GetTask =>
       val worker = sender
       candidateQueue.sendBatchTo(worker, reducedColumns) match {
@@ -288,6 +291,7 @@ class ODMaster(inputFile: Option[File])
         log.info("Asked for workload")
       }
 
+    // now only triggers if we have not received the ACK
     case AckReceivedTimeout(workThief) =>
       // TODO: refine technique of how to handle message loss
       candidateQueue.recoverStolenCandidates(workThief) match {
@@ -299,8 +303,8 @@ class ODMaster(inputFile: Option[File])
     case WorkToSend(amount: Int) =>
       log.info("Sending work to {}", sender)
       candidateQueue.sendBatchToThief(sender, amount)
-      import context.dispatcher
-      context.system.scheduler.scheduleOnce(requestTimeout, self, AckReceivedTimeout(sender))
+      val cancellable = context.system.scheduler.scheduleOnce(requestTimeout, self, AckReceivedTimeout(sender))
+      context.become(findingODs(table, cancellable))
 
     case StolenWork(stolenQueue) =>
       log.info("Received work from {}", sender)
@@ -309,6 +313,7 @@ class ODMaster(inputFile: Option[File])
 
     case AckWorkReceived =>
       candidateQueue.ackStolenCandidates(sender)
+      ackReceivedCancallable.cancel()
 
     case ODsToCheck(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
