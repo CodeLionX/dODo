@@ -5,13 +5,13 @@ import java.io.File
 import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props, Terminated}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, SubscribeAck}
-import com.github.codelionx.dodo.{DodoException, ODCandidateQueue, Settings}
 import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, NumberOfNodes}
 import com.github.codelionx.dodo.actors.DataHolder.{DataNotReady, DataRef, FetchDataFromCluster, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
 import com.github.codelionx.dodo.actors.Worker._
-import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
+import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking, ODCandidateQueue}
 import com.github.codelionx.dodo.types.TypedColumn
+import com.github.codelionx.dodo.{DodoException, Settings}
 
 import scala.collection.immutable.Queue
 import scala.concurrent.duration._
@@ -62,11 +62,10 @@ class ODMaster(inputFile: Option[File])
     context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
   )
 
+  private val candidateQueue: ODCandidateQueue = ODCandidateQueue.empty(settings.maxBatchSize)
 
   private var reducedColumns: Set[Int] = Set.empty
   private var pendingPruningResponses = 0
-
-  private val state: ODCandidateQueue = ODCandidateQueue.empty(settings.maxBatchSize)
 
   private var idleWorkers: Seq[ActorRef] = Seq.empty
 
@@ -175,16 +174,16 @@ class ODMaster(inputFile: Option[File])
           }
         )
         log.info("Generating first candidates and starting search")
-        state.initializeFrom(reducedColumns)
+        candidateQueue.initializeFrom(reducedColumns)
 
-        if (state.workAvailable) {
+        if (candidateQueue.noWorkAvailable) {
           log.error("No OCD candidates generated!")
           shutdown()
 
         } else if (idleWorkers.nonEmpty) {
           // sending work to idleWorkers
-          state.sendEqualBatchToEach(idleWorkers, reducedColumns)( (worker, batch) => {
-            log.debug("Scheduling {} of {} items to check OCD to idle worker {}", batch.length, state.queueSize, worker.path.name)
+          candidateQueue.sendEqualBatchToEach(idleWorkers, reducedColumns)((worker, batch) => {
+            log.debug("Scheduling {} items to check OCD to idle worker {}", batch.length, worker.path.name)
           })
           idleWorkers = Seq.empty
         }
@@ -198,7 +197,7 @@ class ODMaster(inputFile: Option[File])
   def findingODs(table: Array[TypedColumn[Any]]): Receive = {
     case GetTask =>
       val worker = sender
-      state.sendBatchTo(worker, reducedColumns) match {
+      candidateQueue.sendBatchTo(worker, reducedColumns) match {
         case scala.util.Success(_) =>
           log.debug("Scheduling task to check OCD to worker {}", worker.path.name)
         case scala.util.Failure(_) =>
@@ -210,13 +209,13 @@ class ODMaster(inputFile: Option[File])
 
     case GetWorkLoad =>
       if (sender != self) {
-        sender ! WorkLoad(state.queueSize)
+        sender ! WorkLoad(candidateQueue.queueSize)
         log.info("Asked for workload")
       }
 
     case AckReceivedTimeout(workThief) =>
       // TODO: refine technique of how to handle message loss
-      state.recoverStolenCandidates(workThief) match {
+      candidateQueue.recoverStolenCandidates(workThief) match {
         case scala.util.Success(_) =>
         case scala.util.Failure(f) =>
           log.info(s"Work got lost! $f")
@@ -224,21 +223,21 @@ class ODMaster(inputFile: Option[File])
 
     case WorkToSend(amount: Int) =>
       log.info("Sending work to {}", sender)
-      state.sendBatchToThief(sender, amount)
+      candidateQueue.sendBatchToThief(sender, amount)
       import context.dispatcher
       context.system.scheduler.scheduleOnce(5 seconds, self, AckReceivedTimeout(sender))
 
     case StolenWork(stolenQueue) =>
       log.info("Received work from {}", sender)
-      state.enqueue(stolenQueue)
+      candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
 
     case AckWorkReceived =>
-      state.ackStolenCandidates(sender)
+      candidateQueue.ackStolenCandidates(sender)
 
     case ODsToCheck(newODs) =>
-      state.enqueueNewAndAck(newODs, sender)
-      if (state.workAvailable && idleWorkers.nonEmpty) {
+      candidateQueue.enqueueNewAndAck(newODs, sender)
+      if (candidateQueue.workAvailable && idleWorkers.nonEmpty) {
         sendWorkToIdleWorkers()
       }
 
@@ -262,9 +261,9 @@ class ODMaster(inputFile: Option[File])
       log.debug(
         "Work stealing status: averageWl={}, our hasPendingWork ODs={}",
         averageWl,
-        state.pendingSize
+        candidateQueue.pendingSize
       )
-      if(sum > 0) {
+      if (sum > 0) {
         // there is work to steal, steal some from the busiest nodes
         for ((otherSize, otherRef) <- sortedWorkloads) {
           val amountToSteal = Seq(
@@ -278,7 +277,7 @@ class ODMaster(inputFile: Option[File])
             ownWorkLoad += amountToSteal
           }
         }
-      } else if (state.hasNoPendingWork) {
+      } else if (candidateQueue.hasNoPendingWork) {
         // we have no work left and got no work from our work stealing attempt, finished?
         // TODO: make sure others don't have anything pending work anymore as well
         log.warning(
@@ -293,14 +292,14 @@ class ODMaster(inputFile: Option[File])
 
     case StolenWork(stolenQueue) =>
       log.info("Received work from {}", sender)
-      state.enqueue(stolenQueue)
+      candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
       sendWorkToIdleWorkers()
       context.become(findingODs(table))
 
     case ODsToCheck(newODs) =>
-      state.enqueueNewAndAck(newODs, sender)
-      if (state.workAvailable && idleWorkers.nonEmpty) {
+      candidateQueue.enqueueNewAndAck(newODs, sender)
+      if (candidateQueue.workAvailable && idleWorkers.nonEmpty) {
         sendWorkToIdleWorkers()
       }
 
@@ -335,7 +334,7 @@ class ODMaster(inputFile: Option[File])
 
   def sendWorkToIdleWorkers(): Unit = {
     idleWorkers = idleWorkers.filter(worker => {
-      state.sendBatchTo(worker, reducedColumns) match {
+      candidateQueue.sendBatchTo(worker, reducedColumns) match {
         case scala.util.Success(_) =>
           log.debug("Scheduling task to check OCD to idle worker {}", worker.path.name)
           false
