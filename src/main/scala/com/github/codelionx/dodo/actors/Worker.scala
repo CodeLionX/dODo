@@ -6,6 +6,7 @@ import com.github.codelionx.dodo.actors.DataHolder.DataRef
 import com.github.codelionx.dodo.actors.ResultCollector.Results
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
+import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
 
 import scala.collection.immutable.Queue
 import scala.concurrent.duration._
@@ -87,15 +88,15 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       for (odCandidate <- odCandidates) {
         val ocdCandidate = (odCandidate._1 ++ odCandidate._2, odCandidate._2 ++ odCandidate._1)
         var foundOD = false
-        if (checkOrderDependent(ocdCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
-          if (checkOrderDependent(odCandidate, table.asInstanceOf[Array[TypedColumn[_]]])) {
+        if (checkOrderDependent(ocdCandidate, table)) {
+          if (checkOrderDependent(odCandidate, table)) {
             foundODs :+= substituteColumnNames(odCandidate, table)
             foundOD = true
           } else {
             newCandidates ++= generateODCandidates(reducedColumns, odCandidate)
           }
           val mirroredOD = odCandidate.swap
-          if (checkOrderDependent(mirroredOD, table.asInstanceOf[Array[TypedColumn[_]]])) {
+          if (checkOrderDependent(mirroredOD, table)) {
             foundODs :+= substituteColumnNames(mirroredOD, table)
             foundOD = true
           } else {
