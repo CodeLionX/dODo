@@ -8,7 +8,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props}
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Tcp
 import akka.stream.scaladsl.Tcp.{IncomingConnection, OutgoingConnection}
-import com.github.codelionx.dodo.Settings
+import com.github.codelionx.dodo.{DodoException, Settings}
 import com.github.codelionx.dodo.actors.ClusterListener.{GetLeftNeighbor, GetRightNeighbor, LeftNeighbor, RightNeighbor}
 import com.github.codelionx.dodo.parsing.CSVParser
 import com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol._
@@ -50,7 +50,7 @@ object DataHolder {
   case class DataRef(relation: Array[TypedColumn[Any]])
 
   // exceptions
-  case class FetchDataException(cause: Throwable = null) extends RuntimeException(
+  case class FetchDataException(cause: Throwable = null) extends DodoException(
     "Neither left nor right neighbor could provide data. No dataset available!",
     cause
   )
