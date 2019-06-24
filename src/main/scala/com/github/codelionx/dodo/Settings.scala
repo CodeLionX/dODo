@@ -1,7 +1,7 @@
 package com.github.codelionx.dodo
 
 import akka.actor.{ExtendedActorSystem, Extension, ExtensionId, ExtensionIdProvider}
-import com.github.codelionx.dodo.Settings.ParsingSettings
+import com.github.codelionx.dodo.Settings.{ParsingSettings, SideChannelSettings}
 import com.typesafe.config.Config
 
 
@@ -20,10 +20,8 @@ object Settings extends ExtensionId[Settings] with ExtensionIdProvider {
 
       final val Leader = "leader"
       final val Follower = "follower"
-    }
 
-    final val HOST = "localhost"
-    final val PORT = 7877
+    }
   }
 
   class ParsingSettings(config: Config, namespace: String) {
@@ -33,6 +31,15 @@ object Settings extends ExtensionId[Settings] with ExtensionIdProvider {
     val nInferringRows: Int = config.getInt(s"$subnamespace.inferring-rows")
 
     val parseHeader: Boolean = config.getBoolean(s"$subnamespace.has-header")
+  }
+
+  class SideChannelSettings(config: Config, namespace: String) {
+
+    private val subnamespace = s"$namespace.side-channel"
+
+    val hostname: String = config.getString(s"$subnamespace.hostname")
+
+    val startingPort: Int = config.getInt(s"$subnamespace.port")
   }
 }
 
@@ -55,4 +62,5 @@ class Settings(config: Config) extends Extension {
 
   val parsing: ParsingSettings = new ParsingSettings(config, namespace)
 
+  val sideChannel: SideChannelSettings = new SideChannelSettings(config, namespace)
 }

@@ -37,14 +37,22 @@ class CSVParser(settings: ParsingSettings) {
     * @param file file name, can contain relative or absolute paths, see [[java.io.File]] for more infos
     * @return the list of [[com.github.codelionx.dodo.types.TypedColumn]]s containing all data of the file
     */
-  def parse(file: String): Array[TypedColumn[Any]] = {
+  def parse(file: String): Array[TypedColumn[Any]] = parse(new File(file))
+
+  /**
+    * Reads a CSV file and parses it to a list of [[com.github.codelionx.dodo.types.TypedColumn]]s.
+    *
+    * @param file [[java.io.File]] pointing to the dataset
+    * @return the list of [[com.github.codelionx.dodo.types.TypedColumn]]s containing all data of the file
+    */
+  def parse(file: File): Array[TypedColumn[Any]] = {
     val p = TypedColumnProcessor(settings)
     val s = parserSettings.clone()
     s.setProcessor(p)
     val parser = new CsvParser(s)
 
     // parse and return result
-    parser.parse(new File(file))
+    parser.parse(file)
     p.columnarData
   }
 }

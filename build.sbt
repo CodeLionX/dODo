@@ -2,6 +2,7 @@ scalaVersion := "2.12.8"
 
 lazy val akkaVersion = "2.5.22"
 lazy val univocityVersion = "2.8.1"
+lazy val clistVersion = "3.5.1"
 
 
 organization := "com.github.codelionx"
@@ -24,6 +25,9 @@ libraryDependencies ++= Seq(
   // serialization
   "com.twitter" %% s"chill-akka" % "0.9.3",
   //"com.github.romix.akka" %% "akka-kryo-serialization" % "0.5.2",
+  // cli
+  "org.backuity.clist" %% "clist-core" % clistVersion,
+  "org.backuity.clist" %% "clist-macros" % clistVersion % "provided",
 )
 
 // set main class for assembly

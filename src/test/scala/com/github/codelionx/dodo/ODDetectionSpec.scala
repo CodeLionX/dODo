@@ -1,5 +1,7 @@
 package com.github.codelionx.dodo
 
+import java.io.File
+
 import akka.actor.{ActorRef, Props, ActorSystem => AkkaActorSystem}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import com.github.codelionx.dodo.actors.{ODMaster, Worker}
@@ -31,7 +33,7 @@ class ODDetectionSpec extends TestKit(AkkaActorSystem("ODDetectionSpec", ODDetec
 
     "find the right results" in {
       val probe = TestProbe()
-      val master = system.actorOf(Props(new ODMaster() {
+      val master = system.actorOf(Props(new ODMaster(Some(new File("testData/test.csv"))) {
         override val resultCollector: ActorRef = probe.ref
         override val workers: Seq[ActorRef] = Seq(context.actorOf(Worker.props(probe.ref), s"${Worker.name}"))
       }))

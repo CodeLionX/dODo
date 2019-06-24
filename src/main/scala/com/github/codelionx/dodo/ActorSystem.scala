@@ -13,16 +13,50 @@ object ActorSystem {
 
   def defaultConfiguration: Config = ConfigFactory.load()
 
-  def configuration(actorSystemName: String, actorSystemRole: String, host: String, port: Int, masterHost: String, masterPort: Int): Config = {
+  def configuration(
+                     actorSystemName: String,
+                     host: Option[String],
+                     port: Option[Int],
+                     seedHost: Option[String],
+                     seedPort: Option[Int],
+                     hasHeader: Option[Boolean]
+                   ): Config = {
+    val hostnameString = host match {
+      case Some(name) => s"hostname = $name"
+      case None => ""
+    }
+    val portString = port match {
+      case Some(p) => s"port = $p"
+      case None => ""
+    }
+    val seedNodeString = (seedHost, seedPort) match {
+      case (Some(sh), Some(sp)) =>
+        s"""akka.cluster.seed-nodes = ["akka://$actorSystemName@$sh:$sp"]"""
+      case (None, Some(sp)) =>
+        s"""akka.cluster.seed-nodes = ["akka://$actorSystemName@"$${akka.remote.artery.canonical.hostname}":$sp"]"""
+      case (Some(sh), None) =>
+        s"""akka.cluster.seed-nodes = ["akka://$actorSystemName@$sh:"$${akka.remote.artery.canonical.port}]"""
+      case (None, None) => ""
+    }
+    val parsingString = hasHeader match {
+      case Some(header) => s"com.github.codelionx.dodo.parsing.has-header = $header"
+      case None => ""
+    }
     ConfigFactory.parseString(
-      s"""akka.remote.artery.canonical.hostname = "$host"
-         |akka.remote.artery.canonical.port = "$port"
-         |akka.cluster.roles = [$actorSystemRole]
-         |akka.cluster.seed-nodes = [
-         |  "akka://$actorSystemName@$masterHost:$masterPort"
-         |]
+      s"""akka.remote.artery.canonical {
+         |  $hostnameString
+         |  $portString
+         |}
+         |com.github.codelionx.dodo.side-channel {
+         |  $hostnameString
+         |}
+         |$seedNodeString
+         |$parsingString
        """.stripMargin)
-      .withFallback(ConfigFactory.load())
+      .withFallback(ConfigFactory.defaultApplication())
+      .withFallback(ConfigFactory.defaultReference())
+      .withFallback(ConfigFactory.defaultOverrides())
+      .resolve()
   }
 
   def actorSystem(actorSystemName: String, config: Config): akka.actor.ActorSystem = {
