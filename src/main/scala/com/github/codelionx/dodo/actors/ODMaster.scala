@@ -2,7 +2,7 @@ package com.github.codelionx.dodo.actors
 
 import java.io.File
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable, PoisonPill, Props, Terminated}
+import akka.actor._
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator._
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
@@ -296,8 +296,9 @@ class ODMaster(inputFile: Option[File])
       // TODO: refine technique of how to handle message loss
       candidateQueue.recoverStolenCandidates(workThief) match {
         case scala.util.Success(_) =>
+          log.warning("Stolen work queue was recovered, but might get processed twice!")
         case scala.util.Failure(f) =>
-          log.info(s"Work got lost! $f")
+          log.error(s"Work got lost! $f")
       }
 
     case WorkToSend(amount: Int) =>
