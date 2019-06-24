@@ -120,7 +120,8 @@ class ODMaster(inputFile: Option[File])
         val columnIndexTuples = table.indices.combinations(2).map(l => l.head -> l(1))
 
         reducedColumns = table.indices.toSet
-        val constColumns = pruneConstColumns(table)
+        val constColumns = constColumnIndices(table.asInstanceOf[Array[TypedColumn[_]]])
+        reducedColumns --= constColumns
         resultCollector ! ConstColumns(constColumns.map(table(_).name))
 
         log.debug("Found {} constant columns, starting pruning", constColumns.length)
@@ -306,16 +307,6 @@ class ODMaster(inputFile: Option[File])
     case GetWorkLoad if sender == self => // ignore
 
     case m => log.debug("Unknown message received in `workStealing`: {}", m)
-  }
-
-  def pruneConstColumns(table: Array[TypedColumn[Any]]): Seq[Int] = {
-    val constColumns = for {
-      (column, index) <- table.zipWithIndex
-      if checkConstant(column)
-    } yield index
-
-    reducedColumns --= constColumns
-    constColumns
   }
 
   def shutdown(): Unit = {
