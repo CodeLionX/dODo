@@ -6,6 +6,7 @@ import akka.serialization.{Serialization, SerializationExtension}
 import akka.stream.OverflowStrategy
 import akka.stream.scaladsl.{Flow, Keep, Sink, Source, SourceQueueWithComplete}
 import akka.util.ByteString
+import com.github.codelionx.dodo.DodoException
 import com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol.{StreamACK, StreamComplete, StreamInit}
 
 import scala.util.{Failure, Success}
@@ -75,13 +76,13 @@ object ActorStreamConnector {
       .map(bytes => serialization.deserialize(bytes.toArray, deserializationClassHint))
       .map {
         case Success(msg) => msg
-        case Failure(cause) => throw new RuntimeException("Deserialization of message failed", cause)
+        case Failure(cause) => throw new DodoException("Deserialization of message failed", cause)
       }
       .viaMat(sinkSourceFlow)(Keep.right)
       .map(serialization.serialize)
       .map {
         case Success(msg) => ByteString.fromArray(msg)
-        case Failure(cause) => throw new RuntimeException("Serialization of message failed", cause)
+        case Failure(cause) => throw new DodoException("Serialization of message failed", cause)
       }
   }
 }

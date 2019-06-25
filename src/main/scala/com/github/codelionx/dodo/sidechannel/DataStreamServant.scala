@@ -8,6 +8,7 @@ import akka.stream.ActorMaterializer
 import akka.stream.QueueOfferResult.{Dropped, Enqueued, QueueClosed}
 import akka.stream.scaladsl.SourceQueueWithComplete
 import akka.stream.scaladsl.Tcp.IncomingConnection
+import com.github.codelionx.dodo.DodoException
 import com.github.codelionx.dodo.actors.Reaper
 import com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol._
 import com.github.codelionx.dodo.types.TypedColumn
@@ -106,7 +107,7 @@ class DataStreamServant(data: Array[TypedColumn[Any]], connection: IncomingConne
       }
 
     case Dropped =>
-      sourceQueue.fail(new RuntimeException("all $MAXIMUM_NUMBER_OF_RETRIES retries failed!"))
+      sourceQueue.fail(new DodoException("all $MAXIMUM_NUMBER_OF_RETRIES retries failed!"))
       log.error("Could not send data after {} retries", MAXIMUM_NUMBER_OF_RETRIES)
       context.stop(self)
 

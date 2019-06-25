@@ -3,6 +3,7 @@ package com.github.codelionx.dodo.actors
 import akka.actor.{Actor, ActorLogging, Props, RootActorPath}
 import akka.cluster.ClusterEvent._
 import akka.cluster.{Cluster, Member}
+import com.github.codelionx.dodo.DodoException
 
 import scala.util.Try
 
@@ -22,9 +23,7 @@ object ClusterListener {
   case object GetNumberOfNodes
   case class NumberOfNodes(number: Int)
 
-  class ClusterStateException(message: String, cause: Throwable = null) extends RuntimeException(message, cause) {
-    def this(cause: Throwable) = this(cause.getMessage, cause)
-  }
+  case class ClusterStateException(msg: String) extends DodoException(msg)
 
 }
 
@@ -82,7 +81,7 @@ class ClusterListener extends Actor with ActorLogging {
 
     case GetLeftNeighbor | GetRightNeighbor if members.length < 2 =>
       log.warning("Cluster size too small for neighbor operations: {}", members.length)
-      sendError.apply(new ClusterStateException(s"Cluster size is too small: only ${members.length} of 2 members"))
+      sendError.apply(ClusterStateException(s"Cluster size is too small: only ${members.length} of 2 members"))
   }
 
   private def getLeftNeighbor(members: Seq[Member]): Try[Member] = Try {
@@ -104,7 +103,7 @@ class ClusterListener extends Actor with ActorLogging {
 
   private def throwSelfNotFound = {
     log.error("Could not find self node in the member list: our node is not up yet??")
-    throw new ClusterStateException("Could not find self node in the member list")
+    throw ClusterStateException("Could not find self node in the member list")
   }
 
   private def sendError: PartialFunction[Throwable, Unit] = {
