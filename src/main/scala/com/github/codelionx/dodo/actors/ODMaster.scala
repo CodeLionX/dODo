@@ -3,6 +3,7 @@ package com.github.codelionx.dodo.actors
 import java.io.File
 
 import akka.actor._
+import akka.cluster.Cluster
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator._
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
@@ -363,6 +364,8 @@ class ODMaster(inputFile: Option[File])
   }
 
   def shutdown(): Unit = {
+    val cluster = Cluster(context.system)
+    cluster.leave(cluster.selfAddress)
     context.children.foreach(_ ! PoisonPill)
     context.stop(self)
   }
@@ -383,9 +386,9 @@ class ODMaster(inputFile: Option[File])
       candidateQueue.ackStolenCandidates(sender)
       context.unwatch(sender)
 
-    case Terminated =>
-      log.warning("Work thief {} did not acknowledge stolen work and died.", sender.path)
-      candidateQueue.recoverStolenCandidates(sender) match {
+    case Terminated(remoteMaster) =>
+      log.warning("Work thief {} did not acknowledge stolen work and died.", remoteMaster.path)
+      candidateQueue.recoverStolenCandidates(remoteMaster) match {
         case scala.util.Success(_) =>
           log.info("Stolen work queue was recovered!")
         case scala.util.Failure(f) =>
