@@ -13,6 +13,14 @@ trait DependencyChecking extends IndexedOrdering {
   }
 
   /**
+    * Returns the column indices of the constant columns.
+    */
+  def constColumnIndices(table: Array[TypedColumn[_ <: Any]]): Seq[Int] = for {
+    (column, index) <- table.zipWithIndex
+    if checkConstant(column)
+  } yield index
+
+  /**
     * Returns `true` if `col1` and `col2` are order equivalent. Means ordering by `col1` orders `col2` and ordering
     * by `col2` orders `col1`.
     */
