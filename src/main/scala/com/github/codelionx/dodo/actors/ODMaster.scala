@@ -5,6 +5,7 @@ import java.io.File
 import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props, Terminated}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, SubscribeAck}
+import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
 import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, NumberOfNodes}
 import com.github.codelionx.dodo.actors.DataHolder.{DataNotReady, DataRef, FetchDataFromCluster, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
@@ -120,7 +121,7 @@ class ODMaster(inputFile: Option[File])
         val columnIndexTuples = table.indices.combinations(2).map(l => l.head -> l(1))
 
         reducedColumns = table.indices.toSet
-        val constColumns = constColumnIndices(table.asInstanceOf[Array[TypedColumn[_]]])
+        val constColumns = constColumnIndices(table)
         reducedColumns --= constColumns
         resultCollector ! ConstColumns(constColumns.map(table(_).name))
 

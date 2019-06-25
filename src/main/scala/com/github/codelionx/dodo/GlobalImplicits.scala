@@ -3,6 +3,7 @@ package com.github.codelionx.dodo
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.concurrent.duration._
+import scala.language.implicitConversions
 
 
 object GlobalImplicits {
@@ -93,6 +94,29 @@ object GlobalImplicits {
       case HOURS => "h"
       case DAYS => "d"
     }
+  }
+
+  /**
+    * Provides convenience type conversions for
+    *
+    * <ul>
+    *   <li>[[com.github.codelionx.dodo.types.TypedColumn]]s</li>
+    *   <li>arrays of [[com.github.codelionx.dodo.types.TypedColumn]]s</li>
+    * </ul>
+    */
+  object TypedColumnConversions {
+
+    implicit def anyToBlank(col: TypedColumn[Any]): TypedColumn[_ <: Any] =
+      col.asInstanceOf[TypedColumn[_]]
+
+    implicit def blankToAny(col: TypedColumn[_ <: Any]): TypedColumn[_] =
+      col.asInstanceOf[TypedColumn[Any]]
+
+    implicit def anyArrayToBlankArray(col: Array[TypedColumn[Any]]): Array[TypedColumn[_ <: Any]] =
+      col.asInstanceOf[Array[TypedColumn[_]]]
+
+    implicit def blankArrayToAnyArray(col: Array[TypedColumn[_ <: Any]]): Array[TypedColumn[Any]] =
+      col.asInstanceOf[Array[TypedColumn[Any]]]
   }
 
 }
