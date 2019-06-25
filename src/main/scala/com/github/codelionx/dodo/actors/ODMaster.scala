@@ -318,9 +318,7 @@ class ODMaster(inputFile: Option[File])
 
     case ODsToCheck(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
-      if (candidateQueue.workAvailable && idleWorkers.nonEmpty) {
-        sendWorkToIdleWorkers()
-      }
+      sendWorkToIdleWorkers()
 
     case ReportReducedColumnStatus =>
       log.debug("Master received reduced columns and is already searching OCDs")
@@ -387,9 +385,7 @@ class ODMaster(inputFile: Option[File])
 
     case ODsToCheck(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
-      if (candidateQueue.workAvailable && idleWorkers.nonEmpty) {
-        sendWorkToIdleWorkers()
-      }
+      sendWorkToIdleWorkers()
 
     case GetWorkLoad if sender == self => // ignore
     case ReportReducedColumnStatus => // ignore
@@ -411,14 +407,15 @@ class ODMaster(inputFile: Option[File])
     context.system.scheduler.scheduleOnce(3 second, self, WorkLoadTimeout)
   }
 
-  def sendWorkToIdleWorkers(): Unit = {
-    idleWorkers = idleWorkers.filter(worker => {
-      candidateQueue.sendBatchTo(worker, reducedColumns) match {
-        case scala.util.Success(_) =>
-          log.debug("Scheduling task to check OCD to idle worker {}", worker.path.name)
-          false
-        case scala.util.Failure(_) => true
-      }
-    })
-  }
+  def sendWorkToIdleWorkers(): Unit =
+    if (candidateQueue.workAvailable && idleWorkers.nonEmpty) {
+      idleWorkers = idleWorkers.filter(worker => {
+        candidateQueue.sendBatchTo(worker, reducedColumns) match {
+          case scala.util.Success(_) =>
+            log.debug("Scheduling task to check OCD to idle worker {}", worker.path.name)
+            false
+          case scala.util.Failure(_) => true
+        }
+      })
+    }
 }
