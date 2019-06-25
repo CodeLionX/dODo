@@ -2,9 +2,9 @@ package com.github.codelionx.dodo.actors
 
 import java.io.File
 
-import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props, Terminated}
+import akka.actor._
 import akka.cluster.pubsub.DistributedPubSub
-import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, SubscribeAck}
+import akka.cluster.pubsub.DistributedPubSubMediator._
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
 import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, NumberOfNodes}
 import com.github.codelionx.dodo.actors.DataHolder.{DataNotReady, DataRef, FetchDataFromCluster, LoadDataFromDisk}
@@ -23,10 +23,18 @@ object ODMaster {
 
   val name = "odmaster"
 
+  val requestTimeout: FiniteDuration = 5 seconds
+
   def props(inputFile: Option[File]): Props = Props(new ODMaster(inputFile))
 
   case class FindODs(dataHolder: ActorRef)
 
+  // reduced columns sync
+  case object GetReducedColumns
+
+  case class ReducedColumns(cols: Set[Int])
+
+  // work stealing protocol
   case object GetWorkLoad
 
   case class WorkLoad(queueSize: Int)
@@ -41,6 +49,11 @@ object ODMaster {
 
   case class AckReceivedTimeout(workThief: ActorRef)
 
+  // debugging
+  val reportingInterval: FiniteDuration = 5 seconds
+
+  private case object ReportReducedColumnStatus
+
 }
 
 
@@ -51,6 +64,7 @@ class ODMaster(inputFile: Option[File])
     with CandidateGenerator {
 
   import ODMaster._
+  import context.dispatcher
 
 
   private val settings = Settings(context.system)
@@ -72,24 +86,32 @@ class ODMaster(inputFile: Option[File])
 
   private var otherWorkloads: Seq[(Int, ActorRef)] = Seq.empty
 
-  private val workStealingMediator: ActorRef = DistributedPubSub(context.system).mediator
+  private val masterMediator: ActorRef = DistributedPubSub(context.system).mediator
   private val workStealingTopic = "workStealing"
+  private val reducedColumnsTopic = "reducedColumns"
 
   override def preStart(): Unit = {
     log.info("Starting {}", name)
     Reaper.watchWithDefault(self)
-    workStealingMediator ! Subscribe(workStealingTopic, self)
+    masterMediator ! Put(self)
+    masterMediator ! Subscribe(reducedColumnsTopic, self)
+    masterMediator ! Subscribe(workStealingTopic, self)
   }
 
   override def postStop(): Unit =
     log.info("Stopping {}", name)
 
-  override def receive: Receive = unsubscribed
+  override def receive: Receive = unsubscribed()
 
-  def unsubscribed: Receive = {
-    case SubscribeAck(Subscribe(`workStealingTopic`, None, `self`)) =>
-      log.debug("subscribed to the workStealing mediator")
-      clusterListener ! GetNumberOfNodes
+  def unsubscribed(receivedPubSubAcks: Int = 0): Receive = {
+    case SubscribeAck(Subscribe(`reducedColumnsTopic` | `workStealingTopic`, None, `self`)) =>
+      val newReceivedPubSubAcks = receivedPubSubAcks + 1
+      if (newReceivedPubSubAcks < 2) {
+        context.become(unsubscribed(newReceivedPubSubAcks))
+      } else {
+        log.debug("subscribed to the reducedColumns and workStealing topic")
+        clusterListener ! GetNumberOfNodes
+      }
 
     case NumberOfNodes(number) =>
       val isFirstNode = number <= 1
@@ -120,20 +142,32 @@ class ODMaster(inputFile: Option[File])
         }
         val columnIndexTuples = table.indices.combinations(2).map(l => l.head -> l(1))
 
-        reducedColumns = table.indices.toSet
         val constColumns = constColumnIndices(table)
-        reducedColumns --= constColumns
         resultCollector ! ConstColumns(constColumns.map(table(_).name))
 
         log.debug("Found {} constant columns, starting pruning", constColumns.length)
         workers.foreach(actor => actor ! DataRef(table))
-        context.become(pruning(table, orderEquivalencies, columnIndexTuples))
+        val tempReducedColumns = table.indices.toSet -- constColumns
+        context.become(
+          pruning(table, tempReducedColumns, orderEquivalencies, columnIndexTuples, first, Cancellable.alreadyCancelled)
+        )
       } else {
-        log.debug("Initiating work stealing to get work")
-        workers.foreach(actor => actor ! DataRef(table))
-        requestWorkloads()
-        context.become(workStealing(table))
+        log.debug("Requesting reduced columns")
+
+        val cancallable = context.system.scheduler.schedule(
+          0 seconds,
+          requestTimeout,
+          masterMediator,
+          Send(self.path.toStringWithoutAddress, GetReducedColumns, localAffinity = false)
+        )
+        if (log.isDebugEnabled) {
+          context.system.scheduler.scheduleOnce(reportingInterval, self, ReportReducedColumnStatus)
+        }
+        context.become(pruning(table, Set.empty, Array.empty, Iterator.empty, first, cancallable))
       }
+
+    case GetReducedColumns =>
+      log.warning("Received request to supply reduced columns, but we have them not ready yet. Ignoring")
 
     case DataNotReady | Terminated if sender == dataHolder =>
       // todo: handle loading error of data holder
@@ -143,14 +177,24 @@ class ODMaster(inputFile: Option[File])
     case m => log.debug("Unknown message received: {}", m)
   }
 
-  def pruning(table: Array[TypedColumn[Any]], orderEquivalencies: Array[Seq[Int]], columnIndexTuples: Iterator[(Int, Int)]): Receive = {
+  def pruning(
+               table: Array[TypedColumn[Any]],
+               tempReducedColumns: Set[Int],
+               orderEquivalencies: Array[Seq[Int]],
+               columnIndexTuples: Iterator[(Int, Int)],
+               first: Boolean,
+               reducedColumnsCancellable: Cancellable
+             ): Receive = {
     case GetTask if columnIndexTuples.isEmpty =>
       log.debug("Caching idle worker {}", sender.path.name)
       idleWorkers :+= sender
 
     case GetTask if columnIndexTuples.nonEmpty =>
       var nextTuple = columnIndexTuples.next()
-      while (!(reducedColumns.contains(nextTuple._1) && reducedColumns.contains(nextTuple._2)) && columnIndexTuples.nonEmpty) {
+      while (
+        !(tempReducedColumns.contains(nextTuple._1) && tempReducedColumns.contains(nextTuple._2))
+          && columnIndexTuples.nonEmpty
+      ) {
         nextTuple = columnIndexTuples.next()
       }
 
@@ -159,15 +203,15 @@ class ODMaster(inputFile: Option[File])
       pendingPruningResponses += 1
 
     case OrderEquivalent(od, isOrderEquiv) =>
-      if (isOrderEquiv) {
-        reducedColumns -= od._2
+      val newReducedColumns = if (isOrderEquiv) {
         orderEquivalencies(od._1) :+= od._2
+        tempReducedColumns - od._2
+      } else {
+        tempReducedColumns
       }
       pendingPruningResponses -= 1
       if (pendingPruningResponses == 0 && columnIndexTuples.isEmpty) {
-        log.info("Pruning done")
-
-        val equivalenceClasses = reducedColumns.foldLeft(Map.empty[Int, Seq[Int]])(
+        val equivalenceClasses = newReducedColumns.foldLeft(Map.empty[Int, Seq[Int]])(
           (map, ind) => map + (ind -> orderEquivalencies(ind))
         )
         resultCollector ! OrderEquivalencies(
@@ -175,28 +219,56 @@ class ODMaster(inputFile: Option[File])
             table(key).name -> cols.map(table(_).name)
           }
         )
-        log.info("Generating first candidates and starting search")
-        candidateQueue.initializeFrom(reducedColumns)
-
-        if (candidateQueue.noWorkAvailable) {
-          log.error("No OCD candidates generated!")
-          shutdown()
-
-        } else if (idleWorkers.nonEmpty) {
-          // sending work to idleWorkers
-          candidateQueue.sendEqualBatchToEach(idleWorkers, reducedColumns)((worker, batch) => {
-            log.debug("Scheduling {} items to check OCD to idle worker {}", batch.length, worker.path.name)
-          })
-          idleWorkers = Seq.empty
-        }
-
-        context.become(findingODs(table))
+        log.info("Pruning done")
+        masterMediator ! Publish(reducedColumnsTopic, ReducedColumns(newReducedColumns))
+      } else {
+        context.become(
+          pruning(table, newReducedColumns, orderEquivalencies, columnIndexTuples, first, reducedColumnsCancellable)
+        )
       }
+
+    case ReducedColumns(cols) if first =>
+      log.info("Received reduced columns, generating first candidates and starting search")
+      reducedColumnsCancellable.cancel()
+      reducedColumns = cols
+      candidateQueue.initializeFrom(reducedColumns)
+
+      if (candidateQueue.noWorkAvailable) {
+        log.error("No OCD candidates generated!")
+        shutdown()
+
+      } else if (idleWorkers.nonEmpty) {
+        // sending work to idleWorkers
+        candidateQueue.sendEqualBatchToEach(idleWorkers, reducedColumns)((worker, batch) => {
+          log.debug("Scheduling {} items to check OCD to idle worker {}", batch.length, worker.path.name)
+        })
+        idleWorkers = Seq.empty
+      }
+
+      context.become(findingODs(table))
+
+    case ReducedColumns(cols) if !first =>
+      log.debug("Received reduced columns, initiating work stealing to get work")
+      reducedColumnsCancellable.cancel()
+      reducedColumns = cols
+      workers.foreach(actor => actor ! DataRef(table))
+      requestWorkloads()
+      context.become(workStealing(table))
+
+    case ReportReducedColumnStatus =>
+      log.debug("Waiting for reduced columns...")
+      context.system.scheduler.scheduleOnce(reportingInterval, self, ReportReducedColumnStatus)
+
+    case GetReducedColumns =>
+      log.warning("Received request to supply reduced columns, but we have them not ready yet. Ignoring")
 
     case m => log.debug("Unknown message received: {}", m)
   }
 
-  def findingODs(table: Array[TypedColumn[Any]]): Receive = {
+  def findingODs(
+                  table: Array[TypedColumn[Any]],
+                  ackReceivedCancallable: Cancellable = Cancellable.alreadyCancelled
+                ): Receive = {
     case GetTask =>
       val worker = sender
       candidateQueue.sendBatchTo(worker, reducedColumns) match {
@@ -209,25 +281,31 @@ class ODMaster(inputFile: Option[File])
           context.become(workStealing(table))
       }
 
+    case GetReducedColumns =>
+      log.info(s"Sending reduced columns to ${sender.path}")
+      sender ! ReducedColumns(reducedColumns)
+
     case GetWorkLoad =>
       if (sender != self) {
         sender ! WorkLoad(candidateQueue.queueSize)
         log.info("Asked for workload")
       }
 
+    // now only triggers if we have not received the ACK
     case AckReceivedTimeout(workThief) =>
       // TODO: refine technique of how to handle message loss
       candidateQueue.recoverStolenCandidates(workThief) match {
         case scala.util.Success(_) =>
+          log.warning("Stolen work queue was recovered, but might get processed twice!")
         case scala.util.Failure(f) =>
-          log.info(s"Work got lost! $f")
+          log.error(s"Work got lost! $f")
       }
 
     case WorkToSend(amount: Int) =>
       log.info("Sending work to {}", sender)
       candidateQueue.sendBatchToThief(sender, amount)
-      import context.dispatcher
-      context.system.scheduler.scheduleOnce(5 seconds, self, AckReceivedTimeout(sender))
+      val cancellable = context.system.scheduler.scheduleOnce(requestTimeout, self, AckReceivedTimeout(sender))
+      context.become(findingODs(table, cancellable))
 
     case StolenWork(stolenQueue) =>
       log.info("Received work from {}", sender)
@@ -236,6 +314,7 @@ class ODMaster(inputFile: Option[File])
 
     case AckWorkReceived =>
       candidateQueue.ackStolenCandidates(sender)
+      ackReceivedCancallable.cancel()
 
     case ODsToCheck(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
@@ -243,12 +322,19 @@ class ODMaster(inputFile: Option[File])
         sendWorkToIdleWorkers()
       }
 
+    case ReportReducedColumnStatus =>
+      log.debug("Master received reduced columns and is already searching OCDs")
+
     case m => log.debug("Unknown message received: {}", m)
   }
 
   def workStealing(table: Array[TypedColumn[Any]]): Receive = {
     case GetTask =>
       idleWorkers :+= sender
+
+    case GetReducedColumns =>
+      log.info(s"Sending reduced columns to ${sender.path}")
+      sender ! ReducedColumns(reducedColumns)
 
     case WorkLoad(queueSize: Int) =>
       log.info("Received workload of size {} from {}", queueSize, sender)
@@ -306,6 +392,7 @@ class ODMaster(inputFile: Option[File])
       }
 
     case GetWorkLoad if sender == self => // ignore
+    case ReportReducedColumnStatus => // ignore
 
     case m => log.debug("Unknown message received in `workStealing`: {}", m)
   }
@@ -318,7 +405,7 @@ class ODMaster(inputFile: Option[File])
   def requestWorkloads(): Unit = {
     log.info("Asking for workloads")
     otherWorkloads = Seq.empty
-    workStealingMediator ! Publish(workStealingTopic, GetWorkLoad)
+    masterMediator ! Publish(workStealingTopic, GetWorkLoad)
 
     import context.dispatcher
     context.system.scheduler.scheduleOnce(3 second, self, WorkLoadTimeout)
