@@ -23,9 +23,6 @@ object ClusterListener {
   case object GetNumberOfNodes
   case class NumberOfNodes(number: Int)
 
-  case object GetNodeAddresses
-  case class NodeAddresses(addresses: Seq[RootActorPath])
-
   case class ClusterStateException(msg: String) extends DodoException(msg)
 
 }
@@ -70,10 +67,6 @@ class ClusterListener extends Actor with ActorLogging {
 
     case GetNumberOfNodes =>
       sender ! NumberOfNodes(members.length)
-
-    case GetNodeAddresses =>
-      val addresses = members.map(member => RootActorPath(member.address))
-      sender ! NodeAddresses(addresses)
 
     case GetLeftNeighbor if members.length >= 2 =>
       getLeftNeighbor(members)
