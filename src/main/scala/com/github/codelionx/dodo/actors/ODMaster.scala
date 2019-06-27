@@ -4,7 +4,7 @@ import java.io.File
 
 import akka.actor._
 import akka.cluster.Cluster
-import akka.cluster.ClusterEvent.{CurrentClusterState, MemberRemoved}
+import akka.cluster.ClusterEvent.{CurrentClusterState, MemberRemoved, UnreachableMember}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator._
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
@@ -259,7 +259,7 @@ class ODMaster(inputFile: Option[File])
       context.system.scheduler.scheduleOnce(reportingInterval, self, ReportReducedColumnStatus)
 
     case GetReducedColumns =>
-      log.warning("Received request to supply reduced columns, but we have them not ready yet. Ignoring")
+      log.warning("Received request to supply reduced columns, but we don't have them ready yet. Ignoring")
 
     case m => log.debug("Unknown message received: {}", m)
   }
@@ -460,6 +460,17 @@ class ODMaster(inputFile: Option[File])
         context.become(downing(table, updatedPendingMasters))
       }
 
+    case UnreachableMember(node) =>
+      log.debug("Node ({}) detected unreachable, treated as if down", node)
+      // stop waiting for a workload message from this node
+      val updatedPendingMasters = pendingMasters - node.address
+      log.info("Still waiting on work from {} nodes", updatedPendingMasters.size)
+      if (updatedPendingMasters.isEmpty) {
+        shutdown()
+      } else {
+        context.become(downing(table, updatedPendingMasters))
+      }
+
     case WorkLoad(queueSize: Int, pendingSize: Int) =>
       log.info("Received workload of size {} from {}", queueSize, sender)
       if (queueSize > 0 || pendingSize > 0) {
@@ -513,7 +524,7 @@ class ODMaster(inputFile: Option[File])
   def startDowningProtocol(table: Array[TypedColumn[Any]]): Unit = {
     log.info("{} started downingProtocol", self.path.name)
     clusterListener ! GetNumberOfNodes
-    cluster.subscribe(self, classOf[MemberRemoved])
+    cluster.subscribe(self, classOf[MemberRemoved], classOf[UnreachableMember])
     context.become(downing(table, Set.empty))
   }
 }
