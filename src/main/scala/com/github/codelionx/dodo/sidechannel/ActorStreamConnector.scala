@@ -17,6 +17,13 @@ object ActorStreamConnector {
 
   private val frameLength = 50000
 
+  /**
+    * Creates a [[akka.stream.SourceRef]] containing the `data` (wrapped in a
+    * [[com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol.DataOverStream]] message,
+    * serialized, chunked, and framed) and wraps it inside
+    * a [[com.github.codelionx.dodo.actors.DataHolder.SidechannelRef]]. The returned future can be piped to another
+    * actor reference (possibly on another node). See [[akka.pattern.pipe]].
+    */
   def prepareSourceRef(data: Array[TypedColumn[Any]])(implicit context: ActorContext): Future[SidechannelRef] = {
     val system: ActorSystem = context.system
     val serialization = SerializationExtension(system)
@@ -38,6 +45,13 @@ object ActorStreamConnector {
       .map(SidechannelRef)
   }
 
+  /**
+    * Takes a [[akka.stream.SourceRef]] and processes it by sending it to the supplied `actorRef`.
+    * The data is decoded, aggregated and deserialized to the
+    * [[com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol.DataOverStream]] message. See
+    * [[com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol]] for all messages that the supplied actor
+    * must handle.
+    */
   def consumeSourceRefVia(source: SourceRef[ByteString], actorRef: ActorRef)(implicit context: ActorContext): Unit = {
     val system: ActorSystem = context.system
     val serialization = SerializationExtension(system)
