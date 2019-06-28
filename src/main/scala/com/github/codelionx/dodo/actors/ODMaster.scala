@@ -3,6 +3,7 @@ package com.github.codelionx.dodo.actors
 import java.io.File
 
 import akka.actor._
+import akka.cluster.Cluster
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator._
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
@@ -265,10 +266,7 @@ class ODMaster(inputFile: Option[File])
     case m => log.debug("Unknown message received: {}", m)
   }
 
-  def findingODs(
-                  table: Array[TypedColumn[Any]],
-                  ackReceivedCancallable: Cancellable = Cancellable.alreadyCancelled
-                ): Receive = {
+  def findingODs(table: Array[TypedColumn[Any]]): Receive = withWorkStealingHandling {
     case GetTask =>
       val worker = sender
       candidateQueue.sendBatchTo(worker, reducedColumns) match {
@@ -285,47 +283,17 @@ class ODMaster(inputFile: Option[File])
       log.info(s"Sending reduced columns to ${sender.path}")
       sender ! ReducedColumns(reducedColumns)
 
-    case GetWorkLoad =>
-      if (sender != self) {
-        sender ! WorkLoad(candidateQueue.queueSize)
-        log.info("Asked for workload")
-      }
-
-    // now only triggers if we have not received the ACK
-    case AckReceivedTimeout(workThief) =>
-      // TODO: refine technique of how to handle message loss
-      candidateQueue.recoverStolenCandidates(workThief) match {
-        case scala.util.Success(_) =>
-          log.warning("Stolen work queue was recovered, but might get processed twice!")
-        case scala.util.Failure(f) =>
-          log.error(s"Work got lost! $f")
-      }
-
-    case WorkToSend(amount: Int) =>
-      log.info("Sending work to {}", sender)
-      candidateQueue.sendBatchToThief(sender, amount)
-      val cancellable = context.system.scheduler.scheduleOnce(requestTimeout, self, AckReceivedTimeout(sender))
-      context.become(findingODs(table, cancellable))
-
     case StolenWork(stolenQueue) =>
       log.info("Received work from {}", sender)
       candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
 
-    case AckWorkReceived =>
-      candidateQueue.ackStolenCandidates(sender)
-      ackReceivedCancallable.cancel()
-
     case ODsToCheck(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
-      if (candidateQueue.workAvailable && idleWorkers.nonEmpty) {
-        sendWorkToIdleWorkers()
-      }
+      sendWorkToIdleWorkers()
 
     case ReportReducedColumnStatus =>
       log.debug("Master received reduced columns and is already searching OCDs")
-
-    case m => log.debug("Unknown message received: {}", m)
   }
 
   def workStealing(table: Array[TypedColumn[Any]]): Receive = {
@@ -387,9 +355,7 @@ class ODMaster(inputFile: Option[File])
 
     case ODsToCheck(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
-      if (candidateQueue.workAvailable && idleWorkers.nonEmpty) {
-        sendWorkToIdleWorkers()
-      }
+      sendWorkToIdleWorkers()
 
     case GetWorkLoad if sender == self => // ignore
     case ReportReducedColumnStatus => // ignore
@@ -398,8 +364,36 @@ class ODMaster(inputFile: Option[File])
   }
 
   def shutdown(): Unit = {
+    val cluster = Cluster(context.system)
+    cluster.leave(cluster.selfAddress)
     context.children.foreach(_ ! PoisonPill)
     context.stop(self)
+  }
+
+  def withWorkStealingHandling(block: Receive): Receive = block orElse {
+    case GetWorkLoad if sender == self => // ignore
+
+    case GetWorkLoad if sender != self =>
+      sender ! WorkLoad(candidateQueue.queueSize)
+      log.info("Asked for workload")
+
+    case WorkToSend(amount: Int) =>
+      log.info("Sending work to {}", sender)
+      candidateQueue.sendBatchToThief(sender, amount)
+      context.watch(sender)
+
+    case AckWorkReceived =>
+      candidateQueue.ackStolenCandidates(sender)
+      context.unwatch(sender)
+
+    case Terminated(remoteMaster) =>
+      log.warning("Work thief {} did not acknowledge stolen work and died.", remoteMaster.path)
+      candidateQueue.recoverStolenCandidates(remoteMaster) match {
+        case scala.util.Success(_) =>
+          log.info("Stolen work queue was recovered!")
+        case scala.util.Failure(f) =>
+          log.error("Work got lost! {}", f)
+      }
   }
 
   def requestWorkloads(): Unit = {
@@ -411,14 +405,15 @@ class ODMaster(inputFile: Option[File])
     context.system.scheduler.scheduleOnce(3 second, self, WorkLoadTimeout)
   }
 
-  def sendWorkToIdleWorkers(): Unit = {
-    idleWorkers = idleWorkers.filter(worker => {
-      candidateQueue.sendBatchTo(worker, reducedColumns) match {
-        case scala.util.Success(_) =>
-          log.debug("Scheduling task to check OCD to idle worker {}", worker.path.name)
-          false
-        case scala.util.Failure(_) => true
-      }
-    })
-  }
+  def sendWorkToIdleWorkers(): Unit =
+    if (candidateQueue.workAvailable && idleWorkers.nonEmpty) {
+      idleWorkers = idleWorkers.filter(worker => {
+        candidateQueue.sendBatchTo(worker, reducedColumns) match {
+          case scala.util.Success(_) =>
+            log.debug("Scheduling task to check OCD to idle worker {}", worker.path.name)
+            false
+          case scala.util.Failure(_) => true
+        }
+      })
+    }
 }
