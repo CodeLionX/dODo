@@ -1,25 +1,21 @@
 package com.github.codelionx.dodo.actors
 
 import java.io.File
-import java.net.InetSocketAddress
 
 import akka.actor.Status.Failure
-import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props}
-import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.Tcp
-import akka.stream.scaladsl.Tcp.{IncomingConnection, OutgoingConnection}
-import com.github.codelionx.dodo.{DodoException, Settings}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.pattern.pipe
+import akka.stream.SourceRef
+import akka.util.ByteString
 import com.github.codelionx.dodo.actors.ClusterListener.{GetLeftNeighbor, GetRightNeighbor, LeftNeighbor, RightNeighbor}
 import com.github.codelionx.dodo.parsing.CSVParser
+import com.github.codelionx.dodo.sidechannel.ActorStreamConnector
 import com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol._
-import com.github.codelionx.dodo.sidechannel.{ActorStreamConnector, DataStreamServant}
 import com.github.codelionx.dodo.types.TypedColumn
+import com.github.codelionx.dodo.{DodoException, Settings}
 
-import scala.annotation.tailrec
 import scala.concurrent.duration._
-import scala.concurrent.{Await, Future, TimeoutException}
 import scala.language.postfixOps
-import scala.util.{Random, Try}
 
 
 object DataHolder {
@@ -29,9 +25,9 @@ object DataHolder {
   def props(clusterListener: ActorRef): Props = Props(new DataHolder(clusterListener))
 
   // sidechannel address request-response pair
-  case object GetSidechannelAddress extends Serializable
+  case object GetSidechannelRef extends Serializable
 
-  case class SidechannelAddress(address: InetSocketAddress) extends Serializable
+  case class SidechannelRef(data: SourceRef[ByteString])
 
   // load data commands
   case class LoadDataFromDisk(localFile: File)
@@ -63,60 +59,7 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
 
 
   private val userGuardian = "user"
-
-  private val r: Random = new Random()
   private val settings = Settings(context.system)
-
-  private def openSidechannel(data: Array[TypedColumn[Any]]): Int = {
-    implicit val mat: ActorMaterializer = ActorMaterializer()(context)
-    implicit val system: ActorSystem = context.system
-
-    val handler: IncomingConnection => Unit = connection => {
-      log.info("Received connection from {}", connection.remoteAddress)
-      // handle incoming requests in own actor
-      context.actorOf(DataStreamServant.props(data, connection), s"streamServant-${r.nextInt()}")
-    }
-
-    @tailrec
-    def tryBindTo(host: String, port: Int): Int = {
-      val future = Tcp().bind(host, port).runForeach(handler)
-      Try {
-        Await.result(future, 2 seconds)
-      } match {
-        case scala.util.Success(_) => port
-        case scala.util.Failure(f) => f match {
-          case _: TimeoutException | _: InterruptedException =>
-            // no specific error in reasonable amount of time: assuming a successful binding
-            port
-          case error =>
-            log.warning("Binding to port {} failed ({}). Trying again on {}", port, error.getMessage, port + 1)
-            tryBindTo(host, port + 1)
-        }
-      }
-    }
-
-    val sidechannelSettings = settings.sideChannel
-    val port = tryBindTo(sidechannelSettings.hostname, sidechannelSettings.startingPort)
-    log.info("Accepting incoming connections to {}:{}", sidechannelSettings.hostname, port)
-    port
-  }
-
-  private def openRemoteConnection(address: InetSocketAddress): Future[OutgoingConnection] = {
-    implicit val mat: ActorMaterializer = ActorMaterializer()(context)
-    implicit val system: ActorSystem = context.system
-
-    val remoteConnection = Tcp().outgoingConnection(address)
-    val actorConnector = ActorStreamConnector.withSingleSource[DataOverStream, GetDataOverStream.type](
-      targetActorRef = self,
-      singleSourceElem = GetDataOverStream,
-      deserializationClassHint = classOf[DataOverStream]
-    )
-
-    remoteConnection
-      .reduce(_ ++ _)
-      .join(actorConnector)
-      .run()
-  }
 
   override def preStart(): Unit = Reaper.watchWithDefault(self)
 
@@ -126,12 +69,10 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
 
     case LoadDataFromDisk(localFile) =>
       val data = CSVParser(settings.parsing).parse(localFile)
-      val port = openSidechannel(data)
-
       log.info("Loaded data from {}. {} is ready", localFile.getAbsolutePath, name)
       sender ! DataRef(data)
 
-      context.become(dataReady(data, port))
+      context.become(dataReady(data))
 
     case FetchDataFromCluster =>
       log.debug("Request to load data from cluster: searching left neighbour")
@@ -142,9 +83,9 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
   def handleLeftNeighborResults(originalSender: ActorRef): Receive = withCommonNotReady {
     case LeftNeighbor(address) =>
       val otherDataHolder = context.actorSelection(address / userGuardian / ODMaster.name / name)
-      log.info("Asking left neighbour ({}) for sidechannel address", otherDataHolder)
-      otherDataHolder ! GetSidechannelAddress
-      context.become(handleFetchDataResult(originalSender, true))
+      log.info("Asking left neighbour ({}) for sidechannel ref", otherDataHolder)
+      otherDataHolder ! GetSidechannelRef
+      context.become(handleFetchDataResult(originalSender, isLeftNB = true))
 
     case akka.actor.Status.Failure(f) =>
       log.warning("Could not get left neighbor address, because {}. Trying with right neighbor", f)
@@ -157,8 +98,8 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
     case RightNeighbor(address) =>
       val otherDataHolder = context.actorSelection(address / userGuardian / ODMaster.name / name)
       log.info("Asking right neighbour ({}) for sidechannel address", otherDataHolder)
-      otherDataHolder ! GetSidechannelAddress
-      context.become(handleFetchDataResult(originalSender, false))
+      otherDataHolder ! GetSidechannelRef
+      context.become(handleFetchDataResult(originalSender, isLeftNB = false))
 
     case akka.actor.Status.Failure(f) =>
       log.error("Could not get right neighbor address, because {}", f)
@@ -166,9 +107,9 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
   }
 
   def handleFetchDataResult(originalSender: ActorRef, isLeftNB: Boolean): Receive = withCommonNotReady {
-    case SidechannelAddress(socketAddress) =>
-      openRemoteConnection(socketAddress)
-      context.become(handleStreamResult(originalSender, isLeftNB, socketAddress))
+    case SidechannelRef(sourceRef) =>
+      ActorStreamConnector.consumeSourceRefVia(sourceRef, self)
+      context.become(handleStreamResult(originalSender, isLeftNB))
 
     case DataNotReady if isLeftNB =>
       log.warning("Left data holder ({}) is no ready yet. Trying with right neighbor", sender.path)
@@ -181,25 +122,26 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
 
   }
 
-  def handleStreamResult(originalSender: ActorRef, isLeftNB: Boolean, address: InetSocketAddress): Receive = withCommonNotReady {
+  def handleStreamResult(originalSender: ActorRef, isLeftNB: Boolean): Receive = withCommonNotReady {
 
     case StreamInit =>
       sender ! StreamACK
 
-    case DataOverStream(data) =>
-      log.info("Received data over stream from {}", address)
+    case dataMessage: DataOverStream =>
+      log.info("Received data over stream.")
       sender ! StreamACK
-      context.become(receivedData(originalSender, data))
+      context.become(receivedData(originalSender, dataMessage.data))
 
     case Failure(cause) =>
       log.error("Error processing fetch data request: {}. Trying again.", cause)
+
       import context.dispatcher
       context.system.scheduler.scheduleOnce(
         2 second,
         self,
-        SidechannelAddress(address)
+        FetchDataFromCluster
       )
-      context.become(handleFetchDataResult(originalSender, isLeftNB))
+      context.become(uninitialized)
   }
 
   def receivedData(originalSender: ActorRef, data: Array[TypedColumn[Any]]): Receive = withCommonNotReady {
@@ -207,13 +149,11 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
     case StreamComplete =>
       log.info("Stream completed! {} is ready.", name)
       sender ! StreamACK
-
-      val port = openSidechannel(data)
       originalSender ! DataRef(data)
-      context.become(dataReady(data, port))
+      context.become(dataReady(data))
   }
 
-  def dataReady(relation: Array[TypedColumn[Any]], boundPort: Int): Receive = {
+  def dataReady(relation: Array[TypedColumn[Any]]): Receive = {
 
     case LoadDataFromDisk(_) =>
       sender ! DataRef(relation)
@@ -221,8 +161,11 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
     case FetchDataFromCluster =>
       sender ! DataRef(relation)
 
-    case GetSidechannelAddress =>
-      sender ! SidechannelAddress(InetSocketAddress.createUnresolved(settings.sideChannel.hostname, boundPort))
+    case GetSidechannelRef =>
+      log.info("Serving data via sidechannel to {}", sender.path)
+      val dataSource = ActorStreamConnector.prepareSourceRef(relation)
+      import context.dispatcher
+      dataSource pipeTo sender
 
     case GetDataRef =>
       log.info("Serving data to {}", sender.path)
@@ -231,7 +174,7 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
 
   def withCommonNotReady(block: Receive): Receive = {
     val commonNotReady: Receive = {
-      case GetDataRef | GetSidechannelAddress =>
+      case GetDataRef | GetSidechannelRef =>
         log.warning("Request to serve data from uninitialized {}", name)
         sender ! DataNotReady
     }

@@ -6,13 +6,7 @@ import com.github.codelionx.dodo.types.TypedColumn
 object StreamedDataExchangeProtocol {
 
   /**
-    * Request the relational data. Sent via the stream sidechannel.
-    */
-  case object GetDataOverStream extends Serializable
-
-  /**
-    * Response to [[com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol.GetDataOverStream]]
-    * that contains the relational data. Sent via the stream sidechannel.
+    * Message that wrappes the relational data. Sent via the stream sidechannel.
     */
   case class DataOverStream(data: Array[TypedColumn[Any]]) extends Serializable
 
