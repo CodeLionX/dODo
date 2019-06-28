@@ -293,7 +293,7 @@ class ODMaster(inputFile: Option[File])
       log.debug("Master received reduced columns and is already searching OCDs")
   }
 
-  def workStealing(table: Array[TypedColumn[Any]], pendingResponses: Set[ActorRef]): Receive = {
+  def workStealing(table: Array[TypedColumn[Any]], pendingResponses: Set[ActorRef]): Receive = withGetWorkLoadHandling {
     case GetTask =>
       idleWorkers :+= sender
 
@@ -390,21 +390,15 @@ class ODMaster(inputFile: Option[File])
       candidateQueue.enqueueNewAndAck(newODs, sender)
       sendWorkToIdleWorkers()
 
-    case GetWorkLoad if sender != self =>
-      sender ! WorkLoad(candidateQueue.queueSize, candidateQueue.pendingSize)
-      log.info("Asked for workload")
-
-    case GetWorkLoad if sender == self => // ignore
-    case ReportReducedColumnStatus => // ignore
-
     case WorkToSend(amount: Int) =>
       log.info("No work to send")
       sender ! StolenWork(Queue.empty)
 
+    case ReportReducedColumnStatus => // ignore
     case m => log.debug("Unknown message received in `workStealing`: {}", m)
   }
 
-  def downing(table: Array[TypedColumn[Any]], pendingMasters: Set[Address]): Receive = {
+  def downing(table: Array[TypedColumn[Any]], pendingMasters: Set[Address]): Receive = withGetWorkLoadHandling {
     case CurrentClusterState(members) =>
       log.info("Received current cluster state")
       if (members._3.size > 1) {
@@ -432,12 +426,6 @@ class ODMaster(inputFile: Option[File])
       } else {
         updatePendingMasters(table, pendingMasters, sender.path.address)
       }
-
-    case GetWorkLoad if sender != self =>
-      sender ! WorkLoad(candidateQueue.queueSize, candidateQueue.pendingSize)
-      log.info("Asked for workload")
-
-    case GetWorkLoad if sender == self => // ignore
   }
 
   def shutdown(): Unit = {
@@ -447,30 +435,34 @@ class ODMaster(inputFile: Option[File])
     context.stop(self)
   }
 
-  def withWorkStealingHandling(block: Receive): Receive = block orElse {
+  def withGetWorkLoadHandling(block: Receive): Receive = block orElse {
     case GetWorkLoad if sender == self => // ignore
 
     case GetWorkLoad if sender != self =>
       sender ! WorkLoad(candidateQueue.queueSize, candidateQueue.pendingSize)
       log.info("Asked for workload")
+  }
 
-    case WorkToSend(amount: Int) =>
-      log.info("Sending work to {}", sender)
-      candidateQueue.sendBatchToThief(sender, amount)
-      context.watch(sender)
+  def withWorkStealingHandling(block: Receive): Receive = block orElse {
+    withGetWorkLoadHandling {
+      case WorkToSend(amount: Int) =>
+        log.info("Sending work to {}", sender)
+        candidateQueue.sendBatchToThief(sender, amount)
+        context.watch(sender)
 
-    case AckWorkReceived =>
-      candidateQueue.ackStolenCandidates(sender)
-      context.unwatch(sender)
+      case AckWorkReceived =>
+        candidateQueue.ackStolenCandidates(sender)
+        context.unwatch(sender)
 
-    case Terminated(remoteMaster) =>
-      log.warning("Work thief {} did not acknowledge stolen work and died.", remoteMaster.path)
-      candidateQueue.recoverStolenCandidates(remoteMaster) match {
-        case scala.util.Success(_) =>
-          log.info("Stolen work queue was recovered!")
-        case scala.util.Failure(f) =>
-          log.error("Work got lost! {}", f)
-      }
+      case Terminated(remoteMaster) =>
+        log.warning("Work thief {} did not acknowledge stolen work and died.", remoteMaster.path)
+        candidateQueue.recoverStolenCandidates(remoteMaster) match {
+          case scala.util.Success(_) =>
+            log.info("Stolen work queue was recovered!")
+          case scala.util.Failure(f) =>
+            log.error("Work got lost! {}", f)
+        }
+    }
   }
 
   def startWorkStealing(table: Array[TypedColumn[Any]]): Unit = {
