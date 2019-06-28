@@ -3,7 +3,8 @@ package com.github.codelionx.dodo.actors
 import java.io.File
 
 import akka.actor._
-import akka.cluster.Cluster
+import akka.cluster.{Cluster, Member}
+import akka.cluster.ClusterEvent.{CurrentClusterState, MemberRemoved, UnreachableMember}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator._
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
@@ -416,24 +417,12 @@ class ODMaster(inputFile: Option[File])
     case MemberRemoved(node, _) =>
       log.debug("Node ({}) left the cluster", node)
       // stop waiting for a workload message from this node
-      val updatedPendingMasters = pendingMasters - node.address
-      log.info("Still waiting on work from {} nodes", updatedPendingMasters.size)
-      if (updatedPendingMasters.isEmpty) {
-        shutdown()
-      } else {
-        context.become(downing(table, updatedPendingMasters))
-      }
+      updatePendingMasters(table, pendingMasters, node.address)
 
     case UnreachableMember(node) =>
       log.debug("Node ({}) detected unreachable, treated as if down", node)
       // stop waiting for a workload message from this node
-      val updatedPendingMasters = pendingMasters - node.address
-      log.info("Still waiting on work from {} nodes", updatedPendingMasters.size)
-      if (updatedPendingMasters.isEmpty) {
-        shutdown()
-      } else {
-        context.become(downing(table, updatedPendingMasters))
-      }
+      updatePendingMasters(table, pendingMasters, node.address)
 
     case WorkLoad(queueSize: Int, pendingSize: Int) =>
       log.info("Received workload of size {} from {}", queueSize, sender)
@@ -441,14 +430,7 @@ class ODMaster(inputFile: Option[File])
         cluster.unsubscribe(self)
         startWorkStealing(table)
       } else {
-        val updatedPendingMasters = pendingMasters - sender.path.address
-        log.info("Still waiting on work from {} nodes", updatedPendingMasters.size)
-        if (updatedPendingMasters.isEmpty) {
-          log.info("Everybody seems to be finished")
-          shutdown()
-        } else {
-          context.become(downing(table, updatedPendingMasters))
-        }
+        updatePendingMasters(table, pendingMasters, sender.path.address)
       }
 
     case GetWorkLoad if sender != self =>
@@ -469,7 +451,7 @@ class ODMaster(inputFile: Option[File])
     case GetWorkLoad if sender == self => // ignore
 
     case GetWorkLoad if sender != self =>
-      sender ! WorkLoad(candidateQueue.queueSize)
+      sender ! WorkLoad(candidateQueue.queueSize, candidateQueue.pendingSize)
       log.info("Asked for workload")
 
     case WorkToSend(amount: Int) =>
@@ -491,7 +473,7 @@ class ODMaster(inputFile: Option[File])
       }
   }
 
-  def requestWorkloads(): Unit = {
+  def startWorkStealing(table: Array[TypedColumn[Any]]): Unit = {
     log.info("Asking for workloads")
     otherWorkloads = Seq.empty
     masterMediator ! Publish(workStealingTopic, GetWorkLoad)
@@ -501,7 +483,7 @@ class ODMaster(inputFile: Option[File])
     context.become(workStealing(table, Set.empty))
   }
 
-  def sendWorkToIdleWorkers(): Unit =
+  def sendWorkToIdleWorkers(): Unit = {
     if (candidateQueue.workAvailable && idleWorkers.nonEmpty) {
       idleWorkers = idleWorkers.filter(worker => {
         candidateQueue.sendBatchTo(worker, reducedColumns) match {
@@ -512,4 +494,23 @@ class ODMaster(inputFile: Option[File])
         }
       })
     }
+  }
+
+  def startDowningProtocol(table: Array[TypedColumn[Any]]): Unit = {
+    log.info("{} started downingProtocol", self.path.name)
+    clusterListener ! GetNumberOfNodes
+    cluster.subscribe(self, classOf[MemberRemoved], classOf[UnreachableMember])
+    context.become(downing(table, Set.empty))
+  }
+
+  def updatePendingMasters(table: Array[TypedColumn[Any]], pendingMasters: Set[Address], nodeAddress: Address): Unit = {
+    val updatedPendingMasters = pendingMasters - nodeAddress
+    log.info("Still waiting on work from {} nodes", updatedPendingMasters.size)
+    if (updatedPendingMasters.isEmpty) {
+      log.info("Everybody seems to be finished")
+      shutdown()
+    } else {
+      context.become(downing(table, updatedPendingMasters))
+    }
+  }
 }
