@@ -82,7 +82,7 @@ class ODCandidateQueue private(
 
   def queueLength: Int = queueSize
 
-  def pendingSize: Int = pendingOdCandidates.reduce((a, b) => a._2.size + b._2.size) + toBeStolenOdCandidates.reduce((a, b) => a._2.size + b._2.size)
+  def pendingSize: Int = pendingOdCandidates.foldLeft(0)((sum, elem) => sum + elem._2.size) + toBeStolenOdCandidates.foldLeft(0)((sum, elem) => sum + elem._2.size)
 
   def pendingLength: Int = pendingSize
 

@@ -357,34 +357,14 @@ class ODMaster(inputFile: Option[File])
       }
 
     case Terminated(otherMaster) =>
-      val newPendingResponses = pendingResponses - otherMaster
-      context.become(workStealing(table, newPendingResponses))
-      if (newPendingResponses.isEmpty) {
-        if (candidateQueue.queueSize == 0 && candidateQueue.pendingSize == 0) {
-          log.info("Work stealing was unsuccessful")
-          startDowningProtocol(table)
-        } else {
-          context.become(findingODs(table))
-        }
-      }
+      updatePendingResponse(table, pendingResponses, otherMaster)
 
     case StolenWork(stolenQueue) =>
       log.info("Received work from {}", sender)
       candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
       sendWorkToIdleWorkers()
-      val newPendingResponses = pendingResponses - sender
-      context.unwatch(sender)
-      if (newPendingResponses.isEmpty) {
-        if (candidateQueue.queueSize == 0 && candidateQueue.pendingSize == 0) {
-          log.info("Work stealing was unsuccessful")
-          startDowningProtocol(table)
-        } else {
-          context.become(findingODs(table))
-        }
-      } else {
-        context.become(workStealing(table, newPendingResponses))
-      }
+      updatePendingResponse(table, pendingResponses, sender)
 
     case ODsToCheck(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
@@ -399,11 +379,11 @@ class ODMaster(inputFile: Option[File])
   }
 
   def downing(table: Array[TypedColumn[Any]], pendingMasters: Set[Address]): Receive = withGetWorkLoadHandling {
-    case CurrentClusterState(members) =>
+    case CurrentClusterState((_, _, nodeAddresses, _, _)) =>
       log.info("Received current cluster state")
-      if (members._3.size > 1) {
+      if (nodeAddresses.size > 1) {
         masterMediator ! Publish(workStealingTopic, GetWorkLoad)
-        context.become(downing(table, members._3 - cluster.selfAddress))
+        context.become(downing(table, nodeAddresses - cluster.selfAddress))
       } else {
         shutdown()
       }
@@ -493,6 +473,20 @@ class ODMaster(inputFile: Option[File])
     clusterListener ! GetNumberOfNodes
     cluster.subscribe(self, classOf[MemberRemoved], classOf[UnreachableMember])
     context.become(downing(table, Set.empty))
+  }
+
+  def updatePendingResponse(table: Array[TypedColumn[Any]], pendingResponses: Set[ActorRef], actorToRemove: ActorRef): Unit = {
+    val newPendingResponses = pendingResponses - actorToRemove
+    if (newPendingResponses.isEmpty) {
+      if (candidateQueue.queueSize == 0 && candidateQueue.pendingSize == 0) {
+        log.info("Work stealing was unsuccessful")
+        startDowningProtocol(table)
+      } else {
+        context.become(findingODs(table))
+      }
+    } else {
+      context.become(workStealing(table, newPendingResponses))
+    }
   }
 
   def updatePendingMasters(table: Array[TypedColumn[Any]], pendingMasters: Set[Address], nodeAddress: Address): Unit = {
