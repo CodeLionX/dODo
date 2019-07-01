@@ -106,6 +106,7 @@ atlassian-ide-plugin.xml
 
 # data folder
 data
+testData/results.txt
 
 # intellij (openjdk) pid files
 .attach_pid*
