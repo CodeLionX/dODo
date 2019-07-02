@@ -32,7 +32,6 @@ class ClusterListener extends Actor with ActorLogging {
 
   import ClusterListener._
 
-
   implicit private val memberOrder: Ordering[Member] = Member.ageOrdering
 
   private val cluster = Cluster(context.system)

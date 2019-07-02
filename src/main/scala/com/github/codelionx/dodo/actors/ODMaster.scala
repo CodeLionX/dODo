@@ -3,7 +3,8 @@ package com.github.codelionx.dodo.actors
 import java.io.File
 
 import akka.actor._
-import akka.cluster.Cluster
+import akka.cluster.{Cluster, Member}
+import akka.cluster.ClusterEvent.{CurrentClusterState, MemberRemoved, UnreachableMember}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator._
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
@@ -25,33 +26,32 @@ object ODMaster {
   val name = "odmaster"
 
   val requestTimeout: FiniteDuration = 5 seconds
+  // debugging
+  val reportingInterval: FiniteDuration = 5 seconds
 
   def props(inputFile: Option[File]): Props = Props(new ODMaster(inputFile))
 
   case class FindODs(dataHolder: ActorRef)
 
-  // reduced columns sync
-  case object GetReducedColumns
-
   case class ReducedColumns(cols: Set[Int])
 
-  // work stealing protocol
-  case object GetWorkLoad
-
-  case class WorkLoad(queueSize: Int)
-
-  case object WorkLoadTimeout
+  case class WorkLoad(queueSize: Int, pendingSize: Int)
 
   case class WorkToSend(amount: Int)
 
   case class StolenWork(work: Queue[(Seq[Int], Seq[Int])])
 
-  case object AckWorkReceived
-
   case class AckReceivedTimeout(workThief: ActorRef)
 
-  // debugging
-  val reportingInterval: FiniteDuration = 5 seconds
+  // reduced columns sync
+  case object GetReducedColumns
+
+  // work stealing protocol
+  case object GetWorkLoad
+
+  case object WorkLoadTimeout
+
+  case object AckWorkReceived
 
   private case object ReportReducedColumnStatus
 
@@ -67,29 +67,25 @@ class ODMaster(inputFile: Option[File])
   import ODMaster._
   import context.dispatcher
 
-
   private val settings = Settings(context.system)
   private val nWorkers: Int = settings.workers
 
-  private val clusterListener: ActorRef = context.actorOf(ClusterListener.props, ClusterListener.name)
-  private val dataHolder: ActorRef = context.actorOf(DataHolder.props(clusterListener), DataHolder.name)
   val resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
   val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
     context.actorOf(Worker.props(resultCollector), s"${Worker.name}-$i")
   )
 
+  private val clusterListener: ActorRef = context.actorOf(ClusterListener.props, ClusterListener.name)
+  private val cluster = Cluster(context.system)
+  private val dataHolder: ActorRef = context.actorOf(DataHolder.props(clusterListener), DataHolder.name)
   private val candidateQueue: ODCandidateQueue = ODCandidateQueue.empty(settings.maxBatchSize)
-
-  private var reducedColumns: Set[Int] = Set.empty
-  private var pendingPruningResponses = 0
-
-  private var idleWorkers: Seq[ActorRef] = Seq.empty
-
-  private var otherWorkloads: Seq[(Int, ActorRef)] = Seq.empty
-
   private val masterMediator: ActorRef = DistributedPubSub(context.system).mediator
   private val workStealingTopic = "workStealing"
   private val reducedColumnsTopic = "reducedColumns"
+  private var reducedColumns: Set[Int] = Set.empty
+  private var pendingPruningResponses = 0
+  private var idleWorkers: Seq[ActorRef] = Seq.empty
+  private var otherWorkloads: Seq[(Int, Int, ActorRef)] = Seq.empty
 
   override def preStart(): Unit = {
     log.info("Starting {}", name)
@@ -99,8 +95,11 @@ class ODMaster(inputFile: Option[File])
     masterMediator ! Subscribe(workStealingTopic, self)
   }
 
-  override def postStop(): Unit =
+  override def postStop(): Unit = {
     log.info("Stopping {}", name)
+    masterMediator ! Unsubscribe(reducedColumnsTopic, self)
+    masterMediator ! Unsubscribe(workStealingTopic, self)
+  }
 
   override def receive: Receive = unsubscribed()
 
@@ -155,7 +154,7 @@ class ODMaster(inputFile: Option[File])
       } else {
         log.debug("Requesting reduced columns")
 
-        val cancallable = context.system.scheduler.schedule(
+        val cancellable = context.system.scheduler.schedule(
           0 seconds,
           requestTimeout,
           masterMediator,
@@ -164,11 +163,11 @@ class ODMaster(inputFile: Option[File])
         if (log.isDebugEnabled) {
           context.system.scheduler.scheduleOnce(reportingInterval, self, ReportReducedColumnStatus)
         }
-        context.become(pruning(table, Set.empty, Array.empty, Iterator.empty, first, cancallable))
+        context.become(pruning(table, Set.empty, Array.empty, Iterator.empty, first, cancellable))
       }
 
     case GetReducedColumns =>
-      log.warning("Received request to supply reduced columns, but we have them not ready yet. Ignoring")
+      log.warning("Received request to supply reduced columns, but we don't them ready yet. Ignoring")
 
     case DataNotReady | Terminated if sender == dataHolder =>
       // todo: handle loading error of data holder
@@ -253,15 +252,14 @@ class ODMaster(inputFile: Option[File])
       reducedColumnsCancellable.cancel()
       reducedColumns = cols
       workers.foreach(actor => actor ! DataRef(table))
-      requestWorkloads()
-      context.become(workStealing(table))
+      startWorkStealing(table)
 
     case ReportReducedColumnStatus =>
       log.debug("Waiting for reduced columns...")
       context.system.scheduler.scheduleOnce(reportingInterval, self, ReportReducedColumnStatus)
 
     case GetReducedColumns =>
-      log.warning("Received request to supply reduced columns, but we have them not ready yet. Ignoring")
+      log.warning("Received request to supply reduced columns, but we don't have them ready yet. Ignoring")
 
     case m => log.debug("Unknown message received: {}", m)
   }
@@ -275,8 +273,7 @@ class ODMaster(inputFile: Option[File])
         case scala.util.Failure(_) =>
           log.debug("Caching worker {} as idle because work queue is empty", worker.path.name)
           idleWorkers :+= worker
-          requestWorkloads()
-          context.become(workStealing(table))
+          startWorkStealing(table)
       }
 
     case GetReducedColumns =>
@@ -296,7 +293,7 @@ class ODMaster(inputFile: Option[File])
       log.debug("Master received reduced columns and is already searching OCDs")
   }
 
-  def workStealing(table: Array[TypedColumn[Any]]): Receive = {
+  def workStealing(table: Array[TypedColumn[Any]], pendingResponses: Set[ActorRef]): Receive = withGetWorkLoadHandling {
     case GetTask =>
       idleWorkers :+= sender
 
@@ -304,63 +301,111 @@ class ODMaster(inputFile: Option[File])
       log.info(s"Sending reduced columns to ${sender.path}")
       sender ! ReducedColumns(reducedColumns)
 
-    case WorkLoad(queueSize: Int) =>
+    case WorkLoad(queueSize: Int, pendingSize: Int) =>
       log.info("Received workload of size {} from {}", queueSize, sender)
-      otherWorkloads :+= (queueSize, sender)
+      otherWorkloads :+= (queueSize, pendingSize, sender)
 
-    case WorkLoadTimeout =>
+    case WorkLoadTimeout if otherWorkloads.isEmpty =>
+      startDowningProtocol(table)
+
+    case WorkLoadTimeout if otherWorkloads.nonEmpty =>
       val sortedWorkloads = otherWorkloads.sorted
       val sum = sortedWorkloads.map(_._1).sum
       val averageWl: Int = sum / (sortedWorkloads.size + 1)
+      val pendingSum = sortedWorkloads.map(_._2).sum
       var ownWorkLoad = 0
 
       log.debug(
-        "Work stealing status: averageWl={}, our hasPendingWork ODs={}",
+        "Work stealing status: averageWl={}, others' pendingSum={}, our pendingWork ODs={}",
         averageWl,
+        pendingSum,
         candidateQueue.pendingSize
       )
-      if (sum > 0) {
+      if (averageWl > 0) {
         // there is work to steal, steal some from the busiest nodes
-        for ((otherSize, otherRef) <- sortedWorkloads) {
-          val amountToSteal = Seq(
-            otherSize - averageWl,
-            averageWl - ownWorkLoad,
-            settings.workers * settings.maxBatchSize
-          ).min
-          if (amountToSteal > 0) {
-            otherRef ! WorkToSend(amountToSteal)
-            log.info("Stealing {} elements from {}", amountToSteal, otherRef)
-            ownWorkLoad += amountToSteal
-          }
+        val newPendingResponses = sortedWorkloads.flatMap {
+          case (otherSize, _, otherRef) =>
+            val amountToSteal = Seq(
+              otherSize - averageWl,
+              averageWl - ownWorkLoad,
+              settings.workers * settings.maxBatchSize
+            ).min
+            if (amountToSteal > 0) {
+              otherRef ! WorkToSend(amountToSteal)
+              log.info("Stealing {} elements from {}", amountToSteal, otherRef)
+              ownWorkLoad += amountToSteal
+              context.watch(otherRef)
+              Some(otherRef)
+            } else {
+              None
+            }
         }
+        context.become(workStealing(table, newPendingResponses.toSet))
       } else if (candidateQueue.hasNoPendingWork) {
-        // we have no work left and got no work from our work stealing attempt, finished?
-        // TODO: make sure others don't have anything pending work anymore as well
-        log.warning(
-          "This node has no more pending candidates and the queue of other nodes is empty as well. Shutting down node."
-        )
-        shutdown()
+        // we have no work left and got no work from our work stealing attempt
+        if (pendingSum > 0) {
+          // others will soon have work for us to steal again
+          log.info("No work received, will ask again in three seconds")
+          context.system.scheduler.scheduleOnce(3 second, self, startWorkStealing(table))
+        }
+        // check if ALL nodes are completely out of work
+        startDowningProtocol(table)
       } else {
         // nothing to steal, but we still wait for worker results, wait for them
         log.info("Nothing to steal, but our workers are still busy.")
         context.become(findingODs(table))
       }
 
+    case Terminated(otherMaster) =>
+      updatePendingResponse(table, pendingResponses, otherMaster)
+
     case StolenWork(stolenQueue) =>
       log.info("Received work from {}", sender)
       candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
       sendWorkToIdleWorkers()
-      context.become(findingODs(table))
+      updatePendingResponse(table, pendingResponses, sender)
 
     case ODsToCheck(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
       sendWorkToIdleWorkers()
 
-    case GetWorkLoad if sender == self => // ignore
-    case ReportReducedColumnStatus => // ignore
+    case WorkToSend(amount: Int) =>
+      log.info("No work to send")
+      sender ! StolenWork(Queue.empty)
 
+    case ReportReducedColumnStatus => // ignore
     case m => log.debug("Unknown message received in `workStealing`: {}", m)
+  }
+
+  def downing(table: Array[TypedColumn[Any]], pendingMasters: Set[Address]): Receive = withGetWorkLoadHandling {
+    case CurrentClusterState((_, _, nodeAddresses, _, _)) =>
+      log.info("Received current cluster state")
+      if (nodeAddresses.size > 1) {
+        masterMediator ! Publish(workStealingTopic, GetWorkLoad)
+        context.become(downing(table, nodeAddresses - cluster.selfAddress))
+      } else {
+        shutdown()
+      }
+
+    case MemberRemoved(node, _) =>
+      log.debug("Node ({}) left the cluster", node)
+      // stop waiting for a workload message from this node
+      updatePendingMasters(table, pendingMasters, node.address)
+
+    case UnreachableMember(node) =>
+      log.debug("Node ({}) detected unreachable, treated as if down", node)
+      // stop waiting for a workload message from this node
+      updatePendingMasters(table, pendingMasters, node.address)
+
+    case WorkLoad(queueSize: Int, pendingSize: Int) =>
+      log.info("Received workload of size {} from {}", queueSize, sender)
+      if (queueSize > 0 || pendingSize > 0) {
+        cluster.unsubscribe(self)
+        startWorkStealing(table)
+      } else {
+        updatePendingMasters(table, pendingMasters, sender.path.address)
+      }
   }
 
   def shutdown(): Unit = {
@@ -370,42 +415,47 @@ class ODMaster(inputFile: Option[File])
     context.stop(self)
   }
 
-  def withWorkStealingHandling(block: Receive): Receive = block orElse {
+  def withGetWorkLoadHandling(block: Receive): Receive = block orElse {
     case GetWorkLoad if sender == self => // ignore
 
     case GetWorkLoad if sender != self =>
-      sender ! WorkLoad(candidateQueue.queueSize)
+      sender ! WorkLoad(candidateQueue.queueSize, candidateQueue.pendingSize)
       log.info("Asked for workload")
-
-    case WorkToSend(amount: Int) =>
-      log.info("Sending work to {}", sender)
-      candidateQueue.sendBatchToThief(sender, amount)
-      context.watch(sender)
-
-    case AckWorkReceived =>
-      candidateQueue.ackStolenCandidates(sender)
-      context.unwatch(sender)
-
-    case Terminated(remoteMaster) =>
-      log.warning("Work thief {} did not acknowledge stolen work and died.", remoteMaster.path)
-      candidateQueue.recoverStolenCandidates(remoteMaster) match {
-        case scala.util.Success(_) =>
-          log.info("Stolen work queue was recovered!")
-        case scala.util.Failure(f) =>
-          log.error("Work got lost! {}", f)
-      }
   }
 
-  def requestWorkloads(): Unit = {
+  def withWorkStealingHandling(block: Receive): Receive = block orElse {
+    withGetWorkLoadHandling {
+      case WorkToSend(amount: Int) =>
+        log.info("Sending work to {}", sender)
+        candidateQueue.sendBatchToThief(sender, amount)
+        context.watch(sender)
+
+      case AckWorkReceived =>
+        candidateQueue.ackStolenCandidates(sender)
+        context.unwatch(sender)
+
+      case Terminated(remoteMaster) =>
+        log.warning("Work thief {} did not acknowledge stolen work and died.", remoteMaster.path)
+        candidateQueue.recoverStolenCandidates(remoteMaster) match {
+          case scala.util.Success(_) =>
+            log.info("Stolen work queue was recovered!")
+          case scala.util.Failure(f) =>
+            log.error("Work got lost! {}", f)
+        }
+    }
+  }
+
+  def startWorkStealing(table: Array[TypedColumn[Any]]): Unit = {
     log.info("Asking for workloads")
     otherWorkloads = Seq.empty
     masterMediator ! Publish(workStealingTopic, GetWorkLoad)
 
     import context.dispatcher
     context.system.scheduler.scheduleOnce(3 second, self, WorkLoadTimeout)
+    context.become(workStealing(table, Set.empty))
   }
 
-  def sendWorkToIdleWorkers(): Unit =
+  def sendWorkToIdleWorkers(): Unit = {
     if (candidateQueue.workAvailable && idleWorkers.nonEmpty) {
       idleWorkers = idleWorkers.filter(worker => {
         candidateQueue.sendBatchTo(worker, reducedColumns) match {
@@ -416,4 +466,37 @@ class ODMaster(inputFile: Option[File])
         }
       })
     }
+  }
+
+  def startDowningProtocol(table: Array[TypedColumn[Any]]): Unit = {
+    log.info("{} started downingProtocol", self.path.name)
+    clusterListener ! GetNumberOfNodes
+    cluster.subscribe(self, classOf[MemberRemoved], classOf[UnreachableMember])
+    context.become(downing(table, Set.empty))
+  }
+
+  def updatePendingResponse(table: Array[TypedColumn[Any]], pendingResponses: Set[ActorRef], actorToRemove: ActorRef): Unit = {
+    val newPendingResponses = pendingResponses - actorToRemove
+    if (newPendingResponses.isEmpty) {
+      if (candidateQueue.queueSize == 0 && candidateQueue.pendingSize == 0) {
+        log.info("Work stealing was unsuccessful")
+        startDowningProtocol(table)
+      } else {
+        context.become(findingODs(table))
+      }
+    } else {
+      context.become(workStealing(table, newPendingResponses))
+    }
+  }
+
+  def updatePendingMasters(table: Array[TypedColumn[Any]], pendingMasters: Set[Address], nodeAddress: Address): Unit = {
+    val updatedPendingMasters = pendingMasters - nodeAddress
+    log.info("Still waiting on work from {} nodes", updatedPendingMasters.size)
+    if (updatedPendingMasters.isEmpty) {
+      log.info("Everybody seems to be finished")
+      shutdown()
+    } else {
+      context.become(downing(table, updatedPendingMasters))
+    }
+  }
 }
