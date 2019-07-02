@@ -1,6 +1,7 @@
 package com.github.codelionx.dodo.types
 
-import java.time.format.DateTimeFormatter
+import java.time.format.{DateTimeFormatter, DateTimeFormatterBuilder}
+import java.util.Locale
 
 
 /**
@@ -18,12 +19,17 @@ object DateFormat {
   /**
     * Supported date formats (without time info).
     */
-  val dateFormats: Seq[DateFormat] = Seq(IsoDateFormat, BasicFormat, IsoLocalDateFormat)
+  val dateFormats: Seq[DateFormat] = Seq(CustomUSDateFormat, IsoDateFormat, /*BasicFormat,*/ IsoLocalDateFormat)
 
   /**
     * Default date time format.
     */
-  val DEFAULT: DateFormat = BasicFormat
+  val DEFAULT: DateFormat = IsoDateTimeFormat
+
+  // custom formatters
+  private val customUSDateFormatter = new DateTimeFormatterBuilder()
+    .appendPattern("MM/dd/yyyy")
+    .toFormatter(Locale.US)
 
   /**
     * Backward mapping from a [[java.time.format.DateTimeFormatter]] to the DateFormat.
@@ -31,11 +37,12 @@ object DateFormat {
     * @return a [[com.github.codelionx.dodo.types.DateFormat]] marker object that represents the supplied `formatter`.
     */
   def apply(formatter: DateTimeFormatter): DateFormat = formatter match {
-    case DateTimeFormatter.BASIC_ISO_DATE => BasicFormat
+//    case DateTimeFormatter.BASIC_ISO_DATE => BasicFormat
     case DateTimeFormatter.ISO_DATE_TIME => IsoDateTimeFormat
     case DateTimeFormatter.ISO_DATE => IsoDateFormat
     case DateTimeFormatter.ISO_LOCAL_DATE => IsoLocalDateFormat
     case DateTimeFormatter.RFC_1123_DATE_TIME => RFC_1123_Format
+    case `customUSDateFormatter`=> CustomUSDateFormat
     case f => throw new IllegalArgumentException(s"The specified formatter is not supported: $f")
   }
 
@@ -45,11 +52,12 @@ object DateFormat {
     * @return the corresponding formatter
     */
   def toFormatter(dateFormat: DateFormat): DateTimeFormatter = dateFormat match {
-    case BasicFormat => DateTimeFormatter.BASIC_ISO_DATE
+//    case BasicFormat => DateTimeFormatter.BASIC_ISO_DATE
     case IsoDateTimeFormat => DateTimeFormatter.ISO_DATE_TIME
     case IsoDateFormat => DateTimeFormatter.ISO_DATE
     case IsoLocalDateFormat => DateTimeFormatter.ISO_LOCAL_DATE
     case RFC_1123_Format => DateTimeFormatter.RFC_1123_DATE_TIME
+    case CustomUSDateFormat => customUSDateFormatter
   }
 
   implicit class ConvertableDateFormat(dateFormat: DateFormat) {
@@ -72,8 +80,9 @@ object DateFormat {
   */
 sealed trait DateFormat extends Serializable
 
-case object BasicFormat extends DateFormat
+//case object BasicFormat extends DateFormat
 case object IsoDateTimeFormat extends DateFormat
 case object IsoDateFormat extends DateFormat
 case object IsoLocalDateFormat extends DateFormat
 case object RFC_1123_Format extends DateFormat
+case object CustomUSDateFormat extends DateFormat
