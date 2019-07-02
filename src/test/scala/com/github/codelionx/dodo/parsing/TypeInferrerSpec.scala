@@ -24,9 +24,9 @@ class TypeInferrerSpec extends WordSpec with Matchers {
     }
 
     "infer datetimes with time zone" in {
-      TypeInferrer.inferType("2019-12-27T22:15:30+02:00").shouldEqual(ZonedDateType(IsoDateTimeFormat))
-      TypeInferrer.inferType("Tue, 3 Jun 2008 11:05:30 GMT").shouldEqual(ZonedDateType(RFC_1123_Format))
-      TypeInferrer.inferType("10 Jun 2019 08:05:30 GMT").shouldEqual(ZonedDateType(RFC_1123_Format))
+      TypeInferrer.inferType("2019-12-27T22:15:30+02:00").shouldEqual(ZonedDateTimeType(IsoDateTimeFormat))
+      TypeInferrer.inferType("Tue, 3 Jun 2008 11:05:30 GMT").shouldEqual(ZonedDateTimeType(RFC_1123_Format))
+      TypeInferrer.inferType("10 Jun 2019 08:05:30 GMT").shouldEqual(ZonedDateTimeType(RFC_1123_Format))
     }
 
     "infer dates" in {

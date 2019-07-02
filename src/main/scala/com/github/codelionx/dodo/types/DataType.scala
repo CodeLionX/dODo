@@ -15,7 +15,8 @@ object DataType {
     case LongType => 2
     case DoubleType => 3
     case LocalDateType(_) => 4
-    case ZonedDateType(_) => 5
+    case LocalDateTimeType(_) => 5
+    case ZonedDateTimeType(_) => 6
   }
 
   /**
@@ -31,15 +32,17 @@ object DataType {
     */
   def of[T <: Any](implicit ev: ClassTag[T]): DataType[T] = {
     val ZonedClass = classOf[ZonedDateTime]
-    val LocalClass = classOf[LocalDateTime]
+    val LocalDateTimeClass = classOf[LocalDateTime]
+    val LocalDateClass = classOf[LocalDate]
     val DoubleClass = classOf[Double]
     val LongClass = classOf[Long]
     val StringClass = classOf[String]
     val NullClass = classOf[Null]
 
     val tpe = ev.runtimeClass match {
-      case ZonedClass => ZonedDateType(DateFormat.DEFAULT)
-      case LocalClass => LocalDateType(DateFormat.DEFAULT)
+      case ZonedClass => ZonedDateTimeType(DateFormat.DEFAULT)
+      case LocalDateTimeClass => LocalDateTimeType(DateFormat.DEFAULT)
+      case LocalDateClass => LocalDateType(DateFormat.DEFAULT)
       case DoubleClass => DoubleType
       case LongClass => LongType
       case StringClass => StringType
@@ -57,7 +60,8 @@ object DataType {
   *      [[com.github.codelionx.dodo.types.LongType]],
   *      [[com.github.codelionx.dodo.types.DoubleType]],
   *      [[com.github.codelionx.dodo.types.NullType]],
-  *      [[com.github.codelionx.dodo.types.ZonedDateType]],
+  *      [[com.github.codelionx.dodo.types.ZonedDateTimeType]],
+  *      [[com.github.codelionx.dodo.types.LocalDateTimeType]],
   *      [[com.github.codelionx.dodo.types.LocalDateType]]
   * @tparam T underlying (primitive) type
   */
@@ -126,7 +130,7 @@ object DateType {
     def isDate: Boolean = success
 
     /**
-      * If the value is a valid date, returns either a [[com.github.codelionx.dodo.types.ZonedDateType]] or a
+      * If the value is a valid date, returns either a [[com.github.codelionx.dodo.types.ZonedDateTimeType]] or a
       * [[com.github.codelionx.dodo.types.LocalDateType]]. If the value is no
       * valid date, an exception is thrown.
       *
@@ -136,9 +140,14 @@ object DateType {
       if (!success)
         throw new IllegalAccessException("The value is not a valid date.")
       else if (isZoned)
-        ZonedDateType(format)
-      else
-        LocalDateType(format)
+        ZonedDateTimeType(format)
+      else {
+        // if it is just a date format without time information
+        if(DateFormat.dateFormats.contains(format))
+          LocalDateType(format)
+        else
+          LocalDateTimeType(format)
+      }
 
     private def checkForDateTime(value: String): Unit = {
       for (format <- DateFormat.datetimeFormats) {
@@ -183,7 +192,7 @@ object DateType {
 /**
   * Represents a [[java.time.ZonedDateTime]].
   */
-final case class ZonedDateType(format: DateFormat) extends DataType[ZonedDateTime] {
+final case class ZonedDateTimeType(format: DateFormat) extends DataType[ZonedDateTime] {
 
   @transient
   private lazy val formatter = format.toFormatter
@@ -199,10 +208,11 @@ final case class ZonedDateType(format: DateFormat) extends DataType[ZonedDateTim
   override def createTypedColumnBuilder: TypedColumnBuilder[ZonedDateTime] = TypedColumnBuilder(this)
 }
 
+
 /**
   * Represents a [[java.time.LocalDateTime]].
   */
-final case class LocalDateType(format: DateFormat) extends DataType[LocalDateTime] {
+final case class LocalDateTimeType(format: DateFormat) extends DataType[LocalDateTime] {
 
   @transient
   private lazy val formatter = format.toFormatter
@@ -216,6 +226,27 @@ final case class LocalDateType(format: DateFormat) extends DataType[LocalDateTim
   }.toOption
 
   override def createTypedColumnBuilder: TypedColumnBuilder[LocalDateTime] = TypedColumnBuilder(this)
+}
+
+/**
+  * Represents a [[java.time.LocalDate]].
+  */
+final case class LocalDateType(format: DateFormat) extends DataType[LocalDate] {
+
+  @transient
+  private lazy val formatter = format.toFormatter
+
+  override val tpe: ClassTag[LocalDate] = ClassTag(classOf[LocalDate])
+
+  override val ordering: Ordering[Option[LocalDate]] = Ordering.Option(Ordering.by(
+    _.atStartOfDay.toEpochSecond(ZoneOffset.UTC)
+  ))
+
+  override def parse(value: String): Option[LocalDate] = Try {
+    formatter.parse[LocalDate](value, (temp: TemporalAccessor) => LocalDate.from(temp))
+  }.toOption
+
+  override def createTypedColumnBuilder: TypedColumnBuilder[LocalDate] = TypedColumnBuilder(this)
 }
 
 /**
