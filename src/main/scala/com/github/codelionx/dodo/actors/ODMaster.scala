@@ -2,19 +2,20 @@ package com.github.codelionx.dodo.actors
 
 import java.io.File
 
+import akka.actor.SupervisorStrategy.{Restart, Stop}
 import akka.actor._
-import akka.cluster.{Cluster, Member}
+import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.{CurrentClusterState, MemberRemoved, UnreachableMember}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator._
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
+import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, NumberOfNodes}
 import com.github.codelionx.dodo.actors.DataHolder.{DataNotReady, DataRef, FetchDataFromCluster, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
 import com.github.codelionx.dodo.actors.Worker._
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking, ODCandidateQueue}
 import com.github.codelionx.dodo.types.TypedColumn
-import com.github.codelionx.dodo.{DodoException, Settings}
 
 import scala.collection.immutable.Queue
 import scala.concurrent.duration._
@@ -67,6 +68,7 @@ class ODMaster(inputFile: Option[File])
   import ODMaster._
   import context.dispatcher
 
+
   private val settings = Settings(context.system)
   private val nWorkers: Int = settings.workers
 
@@ -86,6 +88,15 @@ class ODMaster(inputFile: Option[File])
   private var pendingPruningResponses = 0
   private var idleWorkers: Seq[ActorRef] = Seq.empty
   private var otherWorkloads: Seq[(Int, Int, ActorRef)] = Seq.empty
+
+  override def supervisorStrategy: SupervisorStrategy =
+    OneForOneStrategy(maxNrOfRetries = 3, withinTimeRange = 15 seconds) {
+      // if data holder fails, stop the whole system
+      case _: Exception if sender == dataHolder =>
+        shutdown()
+        Stop
+      case _: Exception => Restart
+    }
 
   override def preStart(): Unit = {
     log.info("Starting {}", name)
@@ -169,10 +180,9 @@ class ODMaster(inputFile: Option[File])
     case GetReducedColumns =>
       log.warning("Received request to supply reduced columns, but we don't them ready yet. Ignoring")
 
-    case DataNotReady | Terminated if sender == dataHolder =>
-      // todo: handle loading error of data holder
-      log.error("Data Holder has no data")
-      throw new DodoException("Loading data failed!")
+    case DataNotReady =>
+      log.error("Data Holder has no data. Data loading failed!")
+      shutdown()
 
     case m => log.debug("Unknown message received: {}", m)
   }
@@ -228,7 +238,10 @@ class ODMaster(inputFile: Option[File])
       }
 
     case ReducedColumns(cols) if first =>
-      log.info("Received reduced columns, generating first candidates and starting search")
+      log.info(
+        "Received reduced columns, generating first candidates and starting search. Remaining cols: {}",
+        cols.toSeq.sorted.map(table(_).name)
+      )
       reducedColumnsCancellable.cancel()
       reducedColumns = cols
       candidateQueue.initializeFrom(reducedColumns)
@@ -248,7 +261,10 @@ class ODMaster(inputFile: Option[File])
       context.become(findingODs(table))
 
     case ReducedColumns(cols) if !first =>
-      log.debug("Received reduced columns, initiating work stealing to get work")
+      log.debug(
+        "Received reduced columns, initiating work stealing to get work. Remaining cols: {}",
+        cols.toSeq.sorted.map(table(_).name)
+      )
       reducedColumnsCancellable.cancel()
       reducedColumns = cols
       workers.foreach(actor => actor ! DataRef(table))
@@ -440,7 +456,7 @@ class ODMaster(inputFile: Option[File])
           case scala.util.Success(_) =>
             log.info("Stolen work queue was recovered!")
           case scala.util.Failure(f) =>
-            log.error("Work got lost! {}", f)
+            log.error("Work got lost from remote master {}! {}", remoteMaster, f)
         }
     }
   }
