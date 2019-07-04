@@ -51,5 +51,9 @@ class TypeInferrerSpec extends WordSpec with Matchers {
     "not infer 0-padded number with 6 digits as date" in {
       TypeInferrer.inferType("000023").shouldEqual(LongType)
     }
+
+    "not infer 0-padded number with 8 digits as date" in {
+      TypeInferrer.inferType("00000023").shouldEqual(LongType)
+    }
   }
 }
