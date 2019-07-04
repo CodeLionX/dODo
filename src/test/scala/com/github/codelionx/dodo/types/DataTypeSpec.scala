@@ -1,6 +1,6 @@
 package com.github.codelionx.dodo.types
 
-import java.time.{LocalDateTime, ZonedDateTime}
+import java.time.{LocalDate, LocalDateTime, ZonedDateTime}
 
 import org.scalatest.{Matchers, WordSpec}
 
@@ -16,6 +16,11 @@ class DataTypeSpec extends WordSpec with Matchers {
 
     "support LocalDateTime in the factory method" in {
       val dt = DataType.of[LocalDateTime]
+      dt shouldEqual LocalDateTimeType(DateFormat.DEFAULT)
+    }
+
+    "support LocalDate in the factory method" in {
+      val dt = DataType.of[LocalDate]
       dt shouldEqual LocalDateType(DateFormat.DEFAULT)
     }
 
