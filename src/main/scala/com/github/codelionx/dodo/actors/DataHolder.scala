@@ -16,6 +16,7 @@ import com.github.codelionx.dodo.{DodoException, Settings}
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
+import scala.util.Try
 
 
 object DataHolder {
@@ -63,16 +64,25 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
 
   override def preStart(): Unit = Reaper.watchWithDefault(self)
 
+  override def postStop(): Unit = log.info("DataHolder stopped")
+
   override def receive: Receive = uninitialized
 
   def uninitialized: Receive = withCommonNotReady {
 
     case LoadDataFromDisk(localFile) =>
-      val data = CSVParser(settings.parsing).parse(localFile)
-      log.info("Loaded data from {}. {} is ready", localFile.getAbsolutePath, name)
-      sender ! DataRef(data)
+      Try{
+        CSVParser(settings.parsing).parse(localFile)
+      } match {
+        case scala.util.Success(data) =>
+          log.info("Loaded data from {}. {} is ready", localFile.getAbsolutePath, name)
+          sender ! DataRef(data)
+          context.become(dataReady(data))
 
-      context.become(dataReady(data))
+        case scala.util.Failure(f) =>
+          log.error("Could not load data from {}, because {}", localFile.getAbsoluteFile, f)
+          sender ! DataNotReady
+      }
 
     case FetchDataFromCluster =>
       log.debug("Request to load data from cluster: searching left neighbour")
