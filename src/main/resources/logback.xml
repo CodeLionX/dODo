@@ -23,12 +23,12 @@
         </encoder>
     </appender>
 
-    <logger name="com.github.codelionx.dodo" level="DEBUG">
+    <logger name="com.github.codelionx.dodo" level="INFO">
         <appender-ref ref="FILE_DODO" />
     </logger>
 
-    <root level="INFO">
-        <appender-ref ref="STDOUT" />
+    <root level="DEBUG">
+        <!--<appender-ref ref="STDOUT" />-->
         <appender-ref ref="FILE" />
     </root>
 </configuration>
