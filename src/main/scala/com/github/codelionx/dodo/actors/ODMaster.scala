@@ -178,7 +178,7 @@ class ODMaster(inputFile: Option[File])
       }
 
     case GetReducedColumns =>
-      log.warning("Received request to supply reduced columns, but we don't them ready yet. Ignoring")
+      log.warning("Received request to supply reduced columns, but they are not ready yet. Ignoring")
 
     case DataNotReady =>
       log.error("Data Holder has no data. Data loading failed!")
@@ -275,7 +275,7 @@ class ODMaster(inputFile: Option[File])
       context.system.scheduler.scheduleOnce(reportingInterval, self, ReportReducedColumnStatus)
 
     case GetReducedColumns =>
-      log.warning("Received request to supply reduced columns, but we don't have them ready yet. Ignoring")
+      log.warning("Received request to supply reduced columns, but they are not ready yet. Ignoring")
 
     case m => log.debug("Unknown message received: {}", m)
   }
@@ -297,7 +297,7 @@ class ODMaster(inputFile: Option[File])
       sender ! ReducedColumns(reducedColumns)
 
     case StolenWork(stolenQueue) =>
-      log.info("Received stolen work from {}", sender)
+      log.info("Received {} candidates from {}", stolenQueue.size, sender)
       candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
 
@@ -376,7 +376,7 @@ class ODMaster(inputFile: Option[File])
       updatePendingResponse(table, pendingResponses, otherMaster)
 
     case StolenWork(stolenQueue) =>
-      log.info("Received work from {}", sender)
+      log.info("Received {} candidates from {}", stolenQueue.size, sender)
       candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
       sendWorkToIdleWorkers()
@@ -401,21 +401,22 @@ class ODMaster(inputFile: Option[File])
         masterMediator ! Publish(workStealingTopic, GetWorkLoad)
         context.become(downing(table, nodeAddresses - cluster.selfAddress))
       } else {
+        log.info("Last member in cluster and no work available locally.")
         shutdown()
       }
 
     case MemberRemoved(node, _) =>
-      log.debug("Node ({}) left the cluster", node)
+      log.info("Node ({}) left the cluster", node)
       // stop waiting for a workload message from this node
       updatePendingMasters(table, pendingMasters, node.address)
 
     case UnreachableMember(node) =>
-      log.debug("Node ({}) detected unreachable, treated as if down", node)
+      log.info("Node ({}) detected unreachable, treated as if down", node)
       // stop waiting for a workload message from this node
       updatePendingMasters(table, pendingMasters, node.address)
 
     case WorkLoad(queueSize: Int, pendingSize: Int) =>
-      log.info("Received workload of size {} from {}", queueSize, sender)
+      log.info("Received workload of size {} from {}", queueSize, sender.path.address)
       if (queueSize > 0 || pendingSize > 0) {
         cluster.unsubscribe(self)
         startWorkStealing(table)
@@ -512,7 +513,7 @@ class ODMaster(inputFile: Option[File])
       log.info("Everybody seems to be finished")
       shutdown()
     } else {
-      log.info("Still waiting on work from {} nodes", updatedPendingMasters.size)
+      log.info("Still waiting on work from {}", updatedPendingMasters.map(_.toString).mkString(", "))
       context.become(downing(table, updatedPendingMasters))
     }
   }

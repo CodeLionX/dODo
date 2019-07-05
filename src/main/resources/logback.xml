@@ -11,7 +11,7 @@
         <file>dodo.log</file>
         <append>false</append>
         <encoder>
-            <pattern>[%d{HH:mm:ss.SSS} %-5level] %60.60X{akkaSource:-local}| %msg%n</pattern>
+            <pattern>[%d{HH:mm:ss.SSS} %-5level] %30.30X{akkaSource:-local}| %msg%n</pattern>
         </encoder>
     </appender>
 

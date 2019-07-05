@@ -60,10 +60,10 @@ class ClusterListener extends Actor with ActorLogging {
       context.become(internalReceive(members.filterNot(_ == node)))
 
     case UnreachableMember(node) =>
-      log.info("Node ({}) detected unreachable", node)
+      log.debug("Node ({}) detected unreachable", node)
 
     case ReachableMember(node) =>
-      log.info("Node ({}) detected reachable again", node)
+      log.debug("Node ({}) detected reachable again", node)
 
     case GetNumberOfNodes =>
       sender ! NumberOfNodes(members.length)
