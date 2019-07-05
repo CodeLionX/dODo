@@ -12,7 +12,9 @@ port=${seed_port}
 for node in ${nodes}; do
     echo "Starting ${node}"
     pushd ${node} >/dev/null
-    java -jar dodo.jar \
+    java -jar \
+         -Dcom.github.codelionx.dodo.workers=2 \
+         dodo.jar \
          --input-file=${input_file} \
          --has-header=${has_header} \
          --port=${port} \
