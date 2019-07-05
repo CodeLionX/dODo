@@ -6,7 +6,7 @@ set -e
 nodes="node1 node2 node3"
 seed_port=7877
 input_file=../../data/flight_1k.csv
-has_header=false
+has_header=true
 
 port=${seed_port}
 for node in ${nodes}; do
