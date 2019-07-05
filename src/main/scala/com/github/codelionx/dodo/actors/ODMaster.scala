@@ -261,7 +261,7 @@ class ODMaster(inputFile: Option[File])
       context.become(findingODs(table))
 
     case ReducedColumns(cols) if !first =>
-      log.debug(
+      log.info(
         "Received reduced columns, initiating work stealing to get work. Remaining cols: {}",
         cols.toSeq.sorted.map(table(_).name)
       )
@@ -297,7 +297,7 @@ class ODMaster(inputFile: Option[File])
       sender ! ReducedColumns(reducedColumns)
 
     case StolenWork(stolenQueue) =>
-      log.info("Received work from {}", sender)
+      log.info("Received stolen work from {}", sender)
       candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
 
@@ -318,7 +318,7 @@ class ODMaster(inputFile: Option[File])
       sender ! ReducedColumns(reducedColumns)
 
     case WorkLoad(queueSize: Int, pendingSize: Int) =>
-      log.info("Received workload of size {} from {}", queueSize, sender)
+      log.debug("Received workload of size {} from {}", queueSize, sender)
       otherWorkloads :+= (queueSize, pendingSize, sender)
 
     case WorkLoadTimeout if otherWorkloads.isEmpty =>
@@ -331,8 +331,8 @@ class ODMaster(inputFile: Option[File])
       val pendingSum = sortedWorkloads.map(_._2).sum
       var ownWorkLoad = 0
 
-      log.debug(
-        "Work stealing status: averageWl={}, others' pendingSum={}, our pendingWork ODs={}",
+      log.info(
+        "Work stealing status: averageWl={}, others' pendingSum={}, our pending ODs={}",
         averageWl,
         pendingSum,
         candidateQueue.pendingSize
@@ -386,7 +386,7 @@ class ODMaster(inputFile: Option[File])
       candidateQueue.enqueueNewAndAck(newODs, sender)
       sendWorkToIdleWorkers()
 
-    case WorkToSend(amount: Int) =>
+    case WorkToSend(_) =>
       log.info("No work to send")
       sender ! StolenWork(Queue.empty)
 
@@ -396,7 +396,7 @@ class ODMaster(inputFile: Option[File])
 
   def downing(table: Array[TypedColumn[Any]], pendingMasters: Set[Address]): Receive = withGetWorkLoadHandling {
     case CurrentClusterState((_, _, nodeAddresses, _, _)) =>
-      log.info("Received current cluster state")
+      log.debug("Received current cluster state, {} nodes", nodeAddresses.size)
       if (nodeAddresses.size > 1) {
         masterMediator ! Publish(workStealingTopic, GetWorkLoad)
         context.become(downing(table, nodeAddresses - cluster.selfAddress))
@@ -425,6 +425,7 @@ class ODMaster(inputFile: Option[File])
   }
 
   def shutdown(): Unit = {
+    log.info("Leaving cluster and shutting down!")
     val cluster = Cluster(context.system)
     cluster.leave(cluster.selfAddress)
     context.children.foreach(_ ! PoisonPill)
@@ -435,8 +436,8 @@ class ODMaster(inputFile: Option[File])
     case GetWorkLoad if sender == self => // ignore
 
     case GetWorkLoad if sender != self =>
+      log.debug("Was asked for workload from {}", sender.path)
       sender ! WorkLoad(candidateQueue.queueSize, candidateQueue.pendingSize)
-      log.info("Asked for workload")
   }
 
   def withWorkStealingHandling(block: Receive): Receive = block orElse {
@@ -507,11 +508,11 @@ class ODMaster(inputFile: Option[File])
 
   def updatePendingMasters(table: Array[TypedColumn[Any]], pendingMasters: Set[Address], nodeAddress: Address): Unit = {
     val updatedPendingMasters = pendingMasters - nodeAddress
-    log.info("Still waiting on work from {} nodes", updatedPendingMasters.size)
     if (updatedPendingMasters.isEmpty) {
       log.info("Everybody seems to be finished")
       shutdown()
     } else {
+      log.info("Still waiting on work from {} nodes", updatedPendingMasters.size)
       context.become(downing(table, updatedPendingMasters))
     }
   }
