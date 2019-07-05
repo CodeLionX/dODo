@@ -6,4 +6,4 @@ while read -r pid; do
 done < .pidfile
 
 echo "Clearing .pidfile"
-echo "" > .pidfile
+rm .pidfile

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-nodes="node1 node2 node3"
+nodes="node1 node2 node3 node4"
 
 for dirname in ${nodes}; do
     echo "Preparing $dirname ..."
