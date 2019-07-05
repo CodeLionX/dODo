@@ -373,6 +373,7 @@ class ODMaster(inputFile: Option[File])
       }
 
     case Terminated(otherMaster) =>
+      context.unwatch(otherMaster)
       updatePendingResponse(table, pendingResponses, otherMaster)
 
     case StolenWork(stolenQueue) =>
@@ -380,6 +381,7 @@ class ODMaster(inputFile: Option[File])
       candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
       sendWorkToIdleWorkers()
+      context.unwatch(sender)
       updatePendingResponse(table, pendingResponses, sender)
 
     case ODsToCheck(newODs) =>
@@ -453,6 +455,7 @@ class ODMaster(inputFile: Option[File])
         context.unwatch(sender)
 
       case Terminated(remoteMaster) =>
+        context.unwatch(sender)
         log.warning("Work thief {} did not acknowledge stolen work and died.", remoteMaster.path)
         candidateQueue.recoverStolenCandidates(remoteMaster) match {
           case scala.util.Success(_) =>
@@ -488,7 +491,6 @@ class ODMaster(inputFile: Option[File])
 
   def startDowningProtocol(table: Array[TypedColumn[Any]]): Unit = {
     log.info("{} started downingProtocol", self.path.name)
-    clusterListener ! GetNumberOfNodes
     cluster.subscribe(self, classOf[MemberRemoved], classOf[UnreachableMember])
     context.become(downing(table, Set.empty))
   }
