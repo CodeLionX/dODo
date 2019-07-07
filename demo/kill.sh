@@ -10,4 +10,4 @@ while read -r pid; do
 done < .pidfile
 
 echo "Clearing .pidfile"
-rm .pidfile 1>/dev/null 2>1
+rm .pidfile 1>/dev/null 2>&1
