@@ -14,6 +14,9 @@ for node in ${nodes}; do
     pushd ${node} >/dev/null
     java -jar \
          -Dcom.github.codelionx.dodo.workers=2 \
+         -Dcom.github.codelionx.dodo.output-file=results.txt \
+         -Dakka.loglevel=\"DEBUG\" \
+         -Dlogback.configurationFile=file:../logback.xml \
          dodo.jar \
          --input-file=${input_file} \
          --has-header=${has_header} \
