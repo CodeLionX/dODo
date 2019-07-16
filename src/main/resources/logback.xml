@@ -11,7 +11,7 @@
         <file>dodo.log</file>
         <append>false</append>
         <encoder>
-            <pattern>%30.30X{akkaSource:-local}| %msg%n</pattern>
+            <pattern>[%d{HH:mm:ss.SSS} %-5level] %60.60X{akkaSource:-local}| %msg%n</pattern>
         </encoder>
     </appender>
 
@@ -23,12 +23,12 @@
         </encoder>
     </appender>
 
-    <logger name="com.github.codelionx.dodo" level="INFO">
+    <logger name="com.github.codelionx.dodo" level="DEBUG">
         <appender-ref ref="FILE_DODO" />
     </logger>
 
-    <root level="DEBUG">
-        <!--<appender-ref ref="STDOUT" />-->
+    <root level="INFO">
+        <appender-ref ref="STDOUT" />
         <appender-ref ref="FILE" />
     </root>
 </configuration>
