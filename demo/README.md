@@ -20,7 +20,7 @@ It includes descriptions of the settings keys. Excerpt:
 # names of the nodes to be spawned during cluster startup (separated by whitespace)
 nodes="node-name1 node-name2 ..."
 # name of the extra node (can be started via `./start-single.sh`)
-extra_node=extra-node
+extra_node=node-extra
 
 # port of the seed node
 seed_port=
