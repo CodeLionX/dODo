@@ -109,6 +109,21 @@ class DependencyCheckingSpec extends WordSpec with Matchers {
       DependencyCheckingTester.checkOrderDependent(Seq(2) -> Seq(1), dataset) shouldEqual true
     }
 
+    "check for order dependencies with constant ranges" in {
+      val dataset: Array[TypedColumn[_ <: Any]] = Array(
+        TypedColumnBuilder.from("B", "A", "C", "C", "C"),
+        TypedColumnBuilder.from(1.1, 0.2, 23.1, 23.1, 3.02),
+        TypedColumnBuilder.from(80L, 20L, 294L, 294L, 102L)
+      )
+
+      DependencyCheckingTester.checkOrderDependent(Seq(0, 1) -> Seq(2), dataset) shouldEqual true
+      DependencyCheckingTester.checkOrderDependent(Seq(0) -> Seq(2), dataset) shouldEqual false
+      DependencyCheckingTester.checkOrderDependent(Seq(2) -> Seq(0), dataset) shouldEqual true
+      DependencyCheckingTester.checkOrderDependent(Seq(2, 1) -> Seq(0), dataset) shouldEqual true
+      DependencyCheckingTester.checkOrderDependent(Seq(1) -> Seq(0), dataset) shouldEqual true
+      DependencyCheckingTester.checkOrderDependent(Seq(1) -> Seq(2), dataset) shouldEqual true
+    }
+
     "check for a -> b, a -/> c, but a -> bc" in {
       val dataset: Array[TypedColumn[_ <: Any]] = Array(
         TypedColumnBuilder.from(1.1, 0.2, 1.3, 23.1, 1.2),

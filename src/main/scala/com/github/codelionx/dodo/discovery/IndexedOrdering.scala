@@ -92,6 +92,9 @@ trait IndexedOrdering {
         start = i
       }
     }
+    if (start != sortedSlice.length - 1) {
+      ranges += start until sortedSlice.length
+    }
     ranges
   }
 
