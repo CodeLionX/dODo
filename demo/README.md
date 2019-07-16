@@ -5,6 +5,34 @@ It simulates a three-node cluster on the local machine using 3 actor systems run
 Each actor systems employs two workers.
 Logs are written to two separate files keeping the console clear.
 
+---
+
+:warning: **All scripts only work if the demo folder is the working directory!** :warning:
+
+---
+
+## Configuration
+
+The demo can be configured using the file `settings.sh` that is used by all scripts.
+It includes descriptions of the settings keys. Excerpt:
+
+```bash
+# names of the nodes to be spawned during cluster startup (separated by whitespace)
+nodes="node-name1 node-name2 ..."
+# name of the extra node (can be started via `./start-single.sh`)
+extra_node=extra-node
+
+# port of the seed node
+seed_port=
+
+# input configuration
+input_file=
+has_header=true # or false
+
+# common java ops, used for all nodes, starting with `-D`
+common_java_ops=
+```
+
 ## Preparation
 
 1. Build the DODO algorithm and package it as jar file:

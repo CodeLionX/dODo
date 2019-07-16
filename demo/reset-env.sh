@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-nodes="node1 node2 node3 node4"
+source settings.sh
+
+nodes="${nodes} ${extra_node}"
 
 for dirname in ${nodes}; do
     echo "Preparing $dirname ..."
@@ -19,3 +21,6 @@ for dirname in ${nodes}; do
     echo "Finished."
     echo ""
 done
+
+echo "Clearing .pidfile"
+rm .pidfile 1>/dev/null 2>&1

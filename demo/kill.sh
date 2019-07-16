@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-if [ ! -f .pidfile ]; then
+if [[ ! -f .pidfile ]]; then
   echo "No processes running (missing .pidfile)"
   exit 0
 fi

@@ -3,14 +3,13 @@
 # exit script on first failure
 set -e
 
-seed_port=7877
+source settings.sh
 
-echo "Starting node4"
-pushd node4 >/dev/null
+echo "Starting extra-node: ${extra_node}"
+pushd ${extra_node} >/dev/null
 java -jar \
      -Dcom.github.codelionx.dodo.output-file=results.txt \
-     -Dakka.loglevel=\"DEBUG\" \
-     -Dlogback.configurationFile=file:../logback.xml \
+     ${common_java_ops} \
      dodo.jar \
      --port=8000 \
      --seed-port=${seed_port} &
