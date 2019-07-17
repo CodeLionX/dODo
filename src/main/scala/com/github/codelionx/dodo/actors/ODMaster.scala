@@ -18,6 +18,7 @@ import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecki
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.collection.immutable.Queue
+import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
@@ -96,7 +97,7 @@ class ODMaster(inputFile: Option[File])
   private var idleWorkers: Seq[ActorRef] = Seq.empty
   private var otherWorkloads: Seq[(Int, Int, ActorRef)] = Seq.empty
   private var stateVersion: Int = 0
-  private var neighbourStates: Map[ActorRef, (Queue[(Seq[Int], Seq[Int])], Int)] = Map.empty
+  private var neighbourStates: mutable.Map[ActorRef, (Queue[(Seq[Int], Seq[Int])], Int)] = mutable.Map.empty
   private var leftNode: ActorRef = _
   private var rightNode: ActorRef = _
 
@@ -269,7 +270,10 @@ class ODMaster(inputFile: Option[File])
         idleWorkers = Seq.empty
       }
 
-      context.become(findingODs(table))
+      updateNeighbours()
+      // TODO: replace by better placeholder for empty address
+      context.become(initializingStateSynch(table, cluster.selfAddress, cluster.selfAddress))
+      //context.become(findingODs(table))
 
     case ReducedColumns(cols) if !first =>
       log.debug(
@@ -279,7 +283,9 @@ class ODMaster(inputFile: Option[File])
       reducedColumnsCancellable.cancel()
       reducedColumns = cols
       workers.foreach(actor => actor ! DataRef(table))
-      startWorkStealing(table)
+      // TODO: make sure workstealing is started after stateSynch is done
+      // TODO: replace by better placeholder for empty address
+      context.become(initializingStateSynch(table, cluster.selfAddress, cluster.selfAddress))
 
     case ReportReducedColumnStatus =>
       log.debug("Waiting for reduced columns...")
@@ -291,7 +297,44 @@ class ODMaster(inputFile: Option[File])
     case m => log.debug("Unknown message received: {}", m)
   }
 
-  def findingODs(table: Array[TypedColumn[Any]]): Receive = withWorkStealingHandling {
+  // TODO: Here or before pruning?
+  def initializingStateSynch(table: Array[TypedColumn[Any]], rightAddress: Address, leftAddress: Address): Receive = {
+    case CurrentState(queue, versionNr) =>
+      neighbourStates += sender -> (queue, versionNr)
+      context.watch(sender)
+      if (sender.path.address == rightAddress) {
+        rightNode = sender
+      }
+      if (sender.path.address == leftAddress) {
+        leftNode = sender
+      }
+      if (neighbourStates.contains(leftNode) && neighbourStates.contains(rightNode)) {
+        context.become(findingODs(table))
+      }
+
+    case akka.actor.Status.Failure(error) =>
+      log.info("Cannot synch state because of {}", error)
+      context.become(findingODs(table))
+
+    case RightNeighbor(address) =>
+      val newNeighbourPath = address.child("odmaster")
+      val newNeighbour = context.actorSelection(newNeighbourPath)
+      newNeighbour ! NewNeighbourIntroduction
+      // this should only happen when we are looking for the other neighbour of a recently failed node
+      log.info("Telling {} I am their new neighbour", newNeighbourPath)
+      context.become(initializingStateSynch(table, address.address, leftAddress))
+
+    case LeftNeighbor(address) =>
+      val newNeighbourPath = address.child("/user/odmaster")
+      val newNeighbour = context.actorSelection(newNeighbourPath)
+      newNeighbour ! NewNeighbourIntroduction
+      // this should only happen when we are looking for the other neighbour of a recently failed node
+      log.info("Telling {} I am their new neighbour", newNeighbourPath)
+      context.become(initializingStateSynch(table, rightAddress, address.address))
+  }
+
+  def findingODs(table: Array[TypedColumn[Any]]): Receive = withStateReplication {
+    withWorkStealingHandling {
     case GetTask =>
       val worker = sender
       candidateQueue.sendBatchTo(worker, reducedColumns) match {
@@ -318,9 +361,10 @@ class ODMaster(inputFile: Option[File])
 
     case ReportReducedColumnStatus =>
       log.debug("Master received reduced columns and is already searching OCDs")
-  }
+  }}
 
-  def workStealing(table: Array[TypedColumn[Any]], pendingResponses: Set[ActorRef]): Receive = withGetWorkLoadHandling {
+  def workStealing(table: Array[TypedColumn[Any]], pendingResponses: Set[ActorRef]): Receive = withStateReplication {
+    withGetWorkLoadHandling {
     case GetTask =>
       idleWorkers :+= sender
 
@@ -403,9 +447,10 @@ class ODMaster(inputFile: Option[File])
 
     case ReportReducedColumnStatus => // ignore
     case m => log.debug("Unknown message received in `workStealing`: {}", m)
-  }
+  }}
 
-  def downing(table: Array[TypedColumn[Any]], pendingMasters: Set[Address]): Receive = withGetWorkLoadHandling {
+  def downing(table: Array[TypedColumn[Any]], pendingMasters: Set[Address]): Receive = withStateReplication {
+    withGetWorkLoadHandling {
     case CurrentClusterState((_, _, nodeAddresses, _, _)) =>
       log.info("Received current cluster state")
       if (nodeAddresses.size > 1) {
@@ -433,7 +478,7 @@ class ODMaster(inputFile: Option[File])
       } else {
         updatePendingMasters(table, pendingMasters, sender.path.address)
       }
-  }
+  }}
 
   def shutdown(): Unit = {
     val cluster = Cluster(context.system)
@@ -474,7 +519,7 @@ class ODMaster(inputFile: Option[File])
 
   def withStateReplication(block: Receive): Receive = block orElse {
     case NewNeighbourIntroduction =>
-      neighbourStates += sender -> Queue.empty
+      neighbourStates += sender -> (Queue.empty, -1)
       // figure out on which side this new neighbour is
       updateNeighbours()
 
@@ -493,13 +538,11 @@ class ODMaster(inputFile: Option[File])
       log.info("Detected {} has terminated", otherMaster)
       if (otherMaster == rightNode) {
         clusterListener ! GetRightNeighbor
-      } else {
-        // only start synchronization process from the left, to avoid race conditions
-        //clusterListener ! GetLeftNeighbor
-      }
+      } // only start synchronization process from the left, to avoid race conditions
 
     case StateVersion(failedNode, versionNr) =>
-      neighbourStates += sender -> Queue.empty
+      log.info("{} has version {} of {}'s state", sender, versionNr, failedNode)
+      neighbourStates += sender -> (Queue.empty, -1)
       if (neighbourStates(failedNode)._2 > versionNr ||
         (neighbourStates(failedNode)._2 == versionNr && failedNode == rightNode)) {
         candidateQueue.enqueue(neighbourStates(failedNode)._1)
@@ -513,13 +556,13 @@ class ODMaster(inputFile: Option[File])
 
     case RightNeighbor(address) =>
       if (address.address != rightNode.path.address) {
-        val rightMaster = neighbourStates.find(_._1.path.address == address.address)
-        if (rightMaster.isDefined) {
+        val rightMaster = neighbourStates.keys.find(_.path.address == address.address)
+        if (rightMaster.isDefined && rightMaster.get != leftNode) {
           neighbourStates -= rightNode
           context.unwatch(rightNode)
-          rightNode = rightMaster.get._1
+          rightNode = rightMaster.get
           replicateState()
-          log.info("{} set as right neighbour", rightMaster.get._1)
+          log.info("{} set as right neighbour", rightMaster.get)
         } else {
           val newNeighbourPath = address.child("/user/odmaster")
           val newNeighbour = context.actorSelection(newNeighbourPath)
@@ -538,13 +581,7 @@ class ODMaster(inputFile: Option[File])
           rightNode = leftMaster.get._1
           replicateState()
           log.info("{} set as right neighbour", leftMaster.get._1)
-        } /*else {
-          val newNeighbourPath = address.child("/user/odmaster")
-          val newNeighbour = context.actorSelection(newNeighbourPath)
-          newNeighbour ! StateVersion(leftNode, neighbourStates(leftNode)._2)
-          // this should only happen when we are looking for the other neighbour of a recently failed node
-          log.info("Synching for {}'s state with {}", leftNode, newNeighbourPath)
-        }*/
+        }
       }
   }
 
@@ -604,8 +641,12 @@ class ODMaster(inputFile: Option[File])
   }
 
   def replicateState(): Unit = {
-    sendState(leftNode)
-    sendState(rightNode)
+    if (leftNode != null) {
+      sendState(leftNode)
+    }
+    if (rightNode != null) {
+      sendState(rightNode)
+    }
   }
 
   def sendState(receiver: ActorRef): Unit = {
