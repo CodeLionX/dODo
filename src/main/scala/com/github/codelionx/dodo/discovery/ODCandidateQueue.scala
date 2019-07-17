@@ -186,4 +186,13 @@ class ODCandidateQueue private(
       }.toOption
     }: _*
   )
+
+
+  /**
+    * merges the pending and working queues to send to other masters during state replication
+    */
+  def shareableState(): Queue[ODCandidate] = {
+    val merged = (pendingOdCandidates.map(_._2).flatten ++ toBeStolenOdCandidates.map(_._2).flatten ++ odCandidates).toList
+    scala.collection.immutable.Queue(merged: _*)
+  }
 }

@@ -10,7 +10,7 @@ import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator._
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
 import com.github.codelionx.dodo.Settings
-import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, NumberOfNodes}
+import com.github.codelionx.dodo.actors.ClusterListener.{GetLeftNeighbor, GetNumberOfNodes, GetRightNeighbor, LeftNeighbor, NumberOfNodes, RightNeighbor}
 import com.github.codelionx.dodo.actors.DataHolder.{DataNotReady, DataRef, FetchDataFromCluster, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
 import com.github.codelionx.dodo.actors.Worker._
@@ -54,6 +54,13 @@ object ODMaster {
 
   case object AckWorkReceived
 
+  // state replication protocol
+  case object NewNeighbourIntroduction
+
+  case class CurrentState(queue: Queue[(Seq[Int], Seq[Int])], versionNr: Int)
+
+  case class StateVersion(failedNode: ActorRef, versionNr: Int)
+
   private case object ReportReducedColumnStatus
 
 }
@@ -88,6 +95,10 @@ class ODMaster(inputFile: Option[File])
   private var pendingPruningResponses = 0
   private var idleWorkers: Seq[ActorRef] = Seq.empty
   private var otherWorkloads: Seq[(Int, Int, ActorRef)] = Seq.empty
+  private var stateVersion: Int = 0
+  private var neighbourStates: Map[ActorRef, (Queue[(Seq[Int], Seq[Int])], Int)] = Map.empty
+  private var leftNode: ActorRef = _
+  private var rightNode: ActorRef = _
 
   override def supervisorStrategy: SupervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 3, withinTimeRange = 15 seconds) {
@@ -461,6 +472,82 @@ class ODMaster(inputFile: Option[File])
     }
   }
 
+  def withStateReplication(block: Receive): Receive = block orElse {
+    case NewNeighbourIntroduction =>
+      neighbourStates += sender -> Queue.empty
+      // figure out on which side this new neighbour is
+      updateNeighbours()
+
+    case CurrentState(queue, versionNr) =>
+      if (neighbourStates.contains(sender)) {
+        if (neighbourStates(sender)._2 < versionNr) {
+          neighbourStates += sender -> (queue, versionNr)
+        }
+      } else {
+        updateNeighbours()
+        neighbourStates += sender -> (queue, versionNr)
+        context.watch(sender)
+      }
+
+    case Terminated(otherMaster) =>
+      log.info("Detected {} has terminated", otherMaster)
+      if (otherMaster == rightNode) {
+        clusterListener ! GetRightNeighbor
+      } else {
+        // only start synchronization process from the left, to avoid race conditions
+        //clusterListener ! GetLeftNeighbor
+      }
+
+    case StateVersion(failedNode, versionNr) =>
+      neighbourStates += sender -> Queue.empty
+      if (neighbourStates(failedNode)._2 > versionNr ||
+        (neighbourStates(failedNode)._2 == versionNr && failedNode == rightNode)) {
+        candidateQueue.enqueue(neighbourStates(failedNode)._1)
+      }
+      if (failedNode == leftNode) {
+
+        sender ! StateVersion(leftNode, neighbourStates(leftNode)._2)
+      }
+      // this will also replicate the new state to the updated neighbours
+      updateNeighbours()
+
+    case RightNeighbor(address) =>
+      if (address.address != rightNode.path.address) {
+        val rightMaster = neighbourStates.find(_._1.path.address == address.address)
+        if (rightMaster.isDefined) {
+          neighbourStates -= rightNode
+          context.unwatch(rightNode)
+          rightNode = rightMaster.get._1
+          replicateState()
+          log.info("{} set as right neighbour", rightMaster.get._1)
+        } else {
+          val newNeighbourPath = address.child("/user/odmaster")
+          val newNeighbour = context.actorSelection(newNeighbourPath)
+          newNeighbour ! StateVersion(rightNode, neighbourStates(rightNode)._2)
+          // this should only happen when we are looking for the other neighbour of a recently failed node
+          log.info("Synching for {}'s state with {}", rightNode, newNeighbourPath)
+        }
+      }
+
+    case LeftNeighbor(address) =>
+      if (address.address != leftNode.path.address) {
+        val leftMaster = neighbourStates.find(_._1.path.address == address.address)
+        if (leftMaster.isDefined) {
+          neighbourStates -= leftNode
+          context.unwatch(leftNode)
+          rightNode = leftMaster.get._1
+          replicateState()
+          log.info("{} set as right neighbour", leftMaster.get._1)
+        } /*else {
+          val newNeighbourPath = address.child("/user/odmaster")
+          val newNeighbour = context.actorSelection(newNeighbourPath)
+          newNeighbour ! StateVersion(leftNode, neighbourStates(leftNode)._2)
+          // this should only happen when we are looking for the other neighbour of a recently failed node
+          log.info("Synching for {}'s state with {}", leftNode, newNeighbourPath)
+        }*/
+      }
+  }
+
   def startWorkStealing(table: Array[TypedColumn[Any]]): Unit = {
     log.info("Asking for workloads")
     otherWorkloads = Seq.empty
@@ -514,5 +601,20 @@ class ODMaster(inputFile: Option[File])
     } else {
       context.become(downing(table, updatedPendingMasters))
     }
+  }
+
+  def replicateState(): Unit = {
+    sendState(leftNode)
+    sendState(rightNode)
+  }
+
+  def sendState(receiver: ActorRef): Unit = {
+    receiver ! CurrentState(candidateQueue.shareableState(), stateVersion)
+    stateVersion += 1
+  }
+
+  def updateNeighbours(): Unit = {
+    clusterListener ! GetLeftNeighbor
+    clusterListener ! GetRightNeighbor
   }
 }
