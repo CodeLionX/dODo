@@ -178,7 +178,7 @@ class ODMaster(inputFile: Option[File])
       }
 
     case GetReducedColumns =>
-      log.warning("Received request to supply reduced columns, but we don't them ready yet. Ignoring")
+      log.warning("Received request to supply reduced columns, but they are not ready yet. Ignoring")
 
     case DataNotReady =>
       log.error("Data Holder has no data. Data loading failed!")
@@ -261,7 +261,7 @@ class ODMaster(inputFile: Option[File])
       context.become(findingODs(table))
 
     case ReducedColumns(cols) if !first =>
-      log.debug(
+      log.info(
         "Received reduced columns, initiating work stealing to get work. Remaining cols: {}",
         cols.toSeq.sorted.map(table(_).name)
       )
@@ -275,7 +275,7 @@ class ODMaster(inputFile: Option[File])
       context.system.scheduler.scheduleOnce(reportingInterval, self, ReportReducedColumnStatus)
 
     case GetReducedColumns =>
-      log.warning("Received request to supply reduced columns, but we don't have them ready yet. Ignoring")
+      log.warning("Received request to supply reduced columns, but they are not ready yet. Ignoring")
 
     case m => log.debug("Unknown message received: {}", m)
   }
@@ -297,7 +297,7 @@ class ODMaster(inputFile: Option[File])
       sender ! ReducedColumns(reducedColumns)
 
     case StolenWork(stolenQueue) =>
-      log.info("Received work from {}", sender)
+      log.info("Received {} candidates from {}", stolenQueue.size, sender)
       candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
 
@@ -318,7 +318,7 @@ class ODMaster(inputFile: Option[File])
       sender ! ReducedColumns(reducedColumns)
 
     case WorkLoad(queueSize: Int, pendingSize: Int) =>
-      log.info("Received workload of size {} from {}", queueSize, sender)
+      log.debug("Received workload of size {} from {}", queueSize, sender)
       otherWorkloads :+= (queueSize, pendingSize, sender)
 
     case WorkLoadTimeout if otherWorkloads.isEmpty =>
@@ -331,8 +331,8 @@ class ODMaster(inputFile: Option[File])
       val pendingSum = sortedWorkloads.map(_._2).sum
       var ownWorkLoad = 0
 
-      log.debug(
-        "Work stealing status: averageWl={}, others' pendingSum={}, our pendingWork ODs={}",
+      log.info(
+        "Work stealing status: averageWl={}, others' pendingSum={}, our pending ODs={}",
         averageWl,
         pendingSum,
         candidateQueue.pendingSize
@@ -373,20 +373,22 @@ class ODMaster(inputFile: Option[File])
       }
 
     case Terminated(otherMaster) =>
+      context.unwatch(otherMaster)
       updatePendingResponse(table, pendingResponses, otherMaster)
 
     case StolenWork(stolenQueue) =>
-      log.info("Received work from {}", sender)
+      log.info("Received {} candidates from {}", stolenQueue.size, sender)
       candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
       sendWorkToIdleWorkers()
+      context.unwatch(sender)
       updatePendingResponse(table, pendingResponses, sender)
 
     case ODsToCheck(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
       sendWorkToIdleWorkers()
 
-    case WorkToSend(amount: Int) =>
+    case WorkToSend(_) =>
       log.info("No work to send")
       sender ! StolenWork(Queue.empty)
 
@@ -396,26 +398,27 @@ class ODMaster(inputFile: Option[File])
 
   def downing(table: Array[TypedColumn[Any]], pendingMasters: Set[Address]): Receive = withGetWorkLoadHandling {
     case CurrentClusterState((_, _, nodeAddresses, _, _)) =>
-      log.info("Received current cluster state")
+      log.debug("Received current cluster state, {} nodes", nodeAddresses.size)
       if (nodeAddresses.size > 1) {
         masterMediator ! Publish(workStealingTopic, GetWorkLoad)
         context.become(downing(table, nodeAddresses - cluster.selfAddress))
       } else {
+        log.info("Last member in cluster and no work available locally.")
         shutdown()
       }
 
     case MemberRemoved(node, _) =>
-      log.debug("Node ({}) left the cluster", node)
+      log.info("Node ({}) left the cluster", node)
       // stop waiting for a workload message from this node
       updatePendingMasters(table, pendingMasters, node.address)
 
     case UnreachableMember(node) =>
-      log.debug("Node ({}) detected unreachable, treated as if down", node)
+      log.info("Node ({}) detected unreachable, treated as if down", node)
       // stop waiting for a workload message from this node
       updatePendingMasters(table, pendingMasters, node.address)
 
     case WorkLoad(queueSize: Int, pendingSize: Int) =>
-      log.info("Received workload of size {} from {}", queueSize, sender)
+      log.info("Received workload of size {} from {}", queueSize, sender.path.address)
       if (queueSize > 0 || pendingSize > 0) {
         cluster.unsubscribe(self)
         startWorkStealing(table)
@@ -425,6 +428,7 @@ class ODMaster(inputFile: Option[File])
   }
 
   def shutdown(): Unit = {
+    log.info("Leaving cluster and shutting down!")
     val cluster = Cluster(context.system)
     cluster.leave(cluster.selfAddress)
     context.children.foreach(_ ! PoisonPill)
@@ -435,8 +439,8 @@ class ODMaster(inputFile: Option[File])
     case GetWorkLoad if sender == self => // ignore
 
     case GetWorkLoad if sender != self =>
+      log.debug("Was asked for workload from {}", sender.path)
       sender ! WorkLoad(candidateQueue.queueSize, candidateQueue.pendingSize)
-      log.info("Asked for workload")
   }
 
   def withWorkStealingHandling(block: Receive): Receive = block orElse {
@@ -451,6 +455,7 @@ class ODMaster(inputFile: Option[File])
         context.unwatch(sender)
 
       case Terminated(remoteMaster) =>
+        context.unwatch(sender)
         log.warning("Work thief {} did not acknowledge stolen work and died.", remoteMaster.path)
         candidateQueue.recoverStolenCandidates(remoteMaster) match {
           case scala.util.Success(_) =>
@@ -486,7 +491,6 @@ class ODMaster(inputFile: Option[File])
 
   def startDowningProtocol(table: Array[TypedColumn[Any]]): Unit = {
     log.info("{} started downingProtocol", self.path.name)
-    clusterListener ! GetNumberOfNodes
     cluster.subscribe(self, classOf[MemberRemoved], classOf[UnreachableMember])
     context.become(downing(table, Set.empty))
   }
@@ -507,11 +511,11 @@ class ODMaster(inputFile: Option[File])
 
   def updatePendingMasters(table: Array[TypedColumn[Any]], pendingMasters: Set[Address], nodeAddress: Address): Unit = {
     val updatedPendingMasters = pendingMasters - nodeAddress
-    log.info("Still waiting on work from {} nodes", updatedPendingMasters.size)
     if (updatedPendingMasters.isEmpty) {
       log.info("Everybody seems to be finished")
       shutdown()
     } else {
+      log.info("Still waiting on work from {}", updatedPendingMasters.map(_.toString).mkString(", "))
       context.become(downing(table, updatedPendingMasters))
     }
   }
