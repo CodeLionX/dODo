@@ -92,6 +92,7 @@ class ODMaster(inputFile: Option[File])
   private val masterMediator: ActorRef = DistributedPubSub(context.system).mediator
   private val workStealingTopic = "workStealing"
   private val reducedColumnsTopic = "reducedColumns"
+  private val userGuardian = "user"
   private var reducedColumns: Set[Int] = Set.empty
   private var pendingPruningResponses = 0
   private var idleWorkers: Seq[ActorRef] = Seq.empty
@@ -206,7 +207,7 @@ class ODMaster(inputFile: Option[File])
                columnIndexTuples: Iterator[(Int, Int)],
                first: Boolean,
                reducedColumnsCancellable: Cancellable
-             ): Receive = {
+             ): Receive = withStateReplication {
     case GetTask if columnIndexTuples.isEmpty =>
       log.debug("Caching idle worker {}", sender.path.name)
       idleWorkers :+= sender
@@ -307,6 +308,7 @@ class ODMaster(inputFile: Option[File])
       addNeighbour(sender, leftAddress, rightAddress, table, startWithWorkstealing)
 
     case CurrentState(queue, versionNr) =>
+      log.info("Received current state from {}", sender)
       neighbourStates += sender -> (queue, versionNr)
       addNeighbour(sender, leftAddress, rightAddress, table, startWithWorkstealing)
 
@@ -315,20 +317,22 @@ class ODMaster(inputFile: Option[File])
       context.become(findingODs(table))
 
     case RightNeighbor(address) =>
-      val newNeighbourPath = address.child("odmaster*")
-      val newNeighbour = context.actorSelection(newNeighbourPath)
+      val newNeighbour = context.actorSelection(address / userGuardian / ODMaster.name)
       newNeighbour ! NewNeighbourIntroduction
       // this should only happen when we are looking for the other neighbour of a recently failed node
-      log.info("Telling {} I am their new neighbour", newNeighbourPath)
+      log.info("Telling {} I am their new neighbour", newNeighbour)
       context.become(initializingStateSynch(table, address.address, leftAddress, startWithWorkstealing))
 
     case LeftNeighbor(address) =>
-      val newNeighbourPath = address.child("odmaster*")
-      val newNeighbour = context.actorSelection(newNeighbourPath)
+      val newNeighbour = context.actorSelection(address / userGuardian / ODMaster.name)
       newNeighbour ! NewNeighbourIntroduction
       // this should only happen when we are looking for the other neighbour of a recently failed node
-      log.info("Telling {} I am their new neighbour", newNeighbourPath)
+      log.info("Telling {} I am their new neighbour", newNeighbour)
       context.become(initializingStateSynch(table, rightAddress, address.address, startWithWorkstealing))
+
+    case GetReducedColumns =>
+      log.info(s"Sending reduced columns to ${sender.path}")
+      sender ! ReducedColumns(reducedColumns)
   }
 
   def findingODs(table: Array[TypedColumn[Any]]): Receive = withStateReplication {
@@ -355,6 +359,7 @@ class ODMaster(inputFile: Option[File])
 
     case ODsToCheck(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
+      replicateState()
       sendWorkToIdleWorkers()
 
     case ReportReducedColumnStatus =>
@@ -503,6 +508,7 @@ class ODMaster(inputFile: Option[File])
       case AckWorkReceived =>
         candidateQueue.ackStolenCandidates(sender)
         context.unwatch(sender)
+        replicateState()
 
       case Terminated(remoteMaster) =>
         log.warning("Work thief {} did not acknowledge stolen work and died.", remoteMaster.path)
@@ -525,6 +531,7 @@ class ODMaster(inputFile: Option[File])
       if (neighbourStates.contains(sender)) {
         if (neighbourStates(sender)._2 < versionNr) {
           neighbourStates += sender -> (queue, versionNr)
+          log.info("Received current state from {}", sender)
         }
       } else {
         updateNeighbours()
@@ -534,6 +541,7 @@ class ODMaster(inputFile: Option[File])
 
     case Terminated(otherMaster) =>
       log.info("Detected {} has terminated", otherMaster)
+      context.unwatch(otherMaster)
       if (otherMaster == rightNode) {
         clusterListener ! GetRightNeighbor
       } // only start synchronization process from the left, to avoid race conditions
@@ -563,11 +571,10 @@ class ODMaster(inputFile: Option[File])
           replicateState()
           log.info("{} set as right neighbour", rightMaster.get)
         } else {
-          val newNeighbourPath = address.child("odmaster*")
-          val newNeighbour = context.actorSelection(newNeighbourPath)
+          val newNeighbour = context.actorSelection(address / userGuardian / ODMaster.name)
           newNeighbour ! StateVersion(rightNode, neighbourStates(rightNode)._2)
           // this should only happen when we are looking for the other neighbour of a recently failed node
-          log.info("Synching for {}'s state with {}", rightNode, newNeighbourPath)
+          log.info("Synching for {}'s state with {}", rightNode, newNeighbour)
         }
       }
 
@@ -621,6 +628,7 @@ class ODMaster(inputFile: Option[File])
         log.info("Work stealing was unsuccessful")
         startDowningProtocol(table)
       } else {
+        replicateState()
         context.become(findingODs(table))
       }
     } else {
@@ -650,6 +658,7 @@ class ODMaster(inputFile: Option[File])
 
   def sendState(receiver: ActorRef): Unit = {
     receiver ! CurrentState(candidateQueue.shareableState(), stateVersion)
+    log.info("Sending {} my current state", receiver)
     stateVersion += 1
   }
 
@@ -661,10 +670,12 @@ class ODMaster(inputFile: Option[File])
   def addNeighbour(potentialNeighbour: ActorRef, leftAddress: Address, rightAddress: Address, table: Array[TypedColumn[Any]], startWithWorkStealing: Boolean): Unit = {
     // figure out on which side this new neighbour is
     if (sender.path.address == rightAddress) {
+      log.info("Setting {} as my right neighbour", sender)
       rightNode = sender
       context.watch(sender)
     }
     if (sender.path.address == leftAddress) {
+      log.info("Setting {} as my left neighbour", sender)
       leftNode = sender
       context.watch(sender)
     }
