@@ -1,4 +1,4 @@
-package com.github.codelionx.dodo.actors
+package com.github.codelionx.dodo.actors.master
 
 import java.io.File
 
@@ -14,6 +14,7 @@ import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, Numbe
 import com.github.codelionx.dodo.actors.DataHolder.{DataNotReady, DataRef, FetchDataFromCluster, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
 import com.github.codelionx.dodo.actors.Worker._
+import com.github.codelionx.dodo.actors._
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking, ODCandidateQueue}
 import com.github.codelionx.dodo.types.TypedColumn
 
