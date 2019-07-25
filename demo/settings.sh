@@ -9,7 +9,7 @@ extra_node=node4
 seed_port=7877
 
 # input configuration
-input_file=../../data/test.csv
+input_file=../../data/flight_1k.csv
 has_header=true
 
 # common java ops, used for all nodes
