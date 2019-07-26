@@ -213,7 +213,7 @@ class ODMaster(inputFile: Option[File])
       sender ! CheckForEquivalency(nextTuple)
       pendingPruningResponses += 1
 
-    case OrderEquivalent(od, isOrderEquiv) =>
+    case OrderEquivalencyChecked(od, isOrderEquiv) =>
       val newReducedColumns = if (isOrderEquiv) {
         orderEquivalencies(od._1) :+= od._2
         tempReducedColumns - od._2
@@ -302,7 +302,7 @@ class ODMaster(inputFile: Option[File])
       candidateQueue.enqueue(stolenQueue)
       sender ! AckWorkReceived
 
-    case ODsToCheck(newODs) =>
+    case NewODCandidates(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
       sendWorkToIdleWorkers()
 
@@ -385,7 +385,7 @@ class ODMaster(inputFile: Option[File])
       context.unwatch(sender)
       updatePendingResponse(table, pendingResponses, sender)
 
-    case ODsToCheck(newODs) =>
+    case NewODCandidates(newODs) =>
       candidateQueue.enqueueNewAndAck(newODs, sender)
       sendWorkToIdleWorkers()
 
