@@ -1,10 +1,11 @@
-package com.github.codelionx.dodo.discovery
+package com.github.codelionx.dodo.actors.master
 
 import akka.actor.ActorRef
 import com.github.codelionx.dodo.DodoException
 import com.github.codelionx.dodo.actors.Worker.CheckForOD
+import com.github.codelionx.dodo.actors.master
 import com.github.codelionx.dodo.actors.master.ODMaster.StolenWork
-import com.github.codelionx.dodo.discovery.ODCandidateQueue.ODCandidate
+import com.github.codelionx.dodo.discovery.CandidateGenerator
 
 import scala.collection.immutable.Queue
 import scala.collection.mutable
@@ -29,7 +30,7 @@ object ODCandidateQueue {
 
     /**
       * Converts an option to a try using a
-      * [[com.github.codelionx.dodo.discovery.ODCandidateQueue.ODCandidateQueueException]]
+      * [[master.ODCandidateQueue.ODCandidateQueueException]]
       * as exception type with the supplied message `msg` on failure.
       */
     def toTry(msg: String): Try[A] = {
@@ -44,7 +45,7 @@ object ODCandidateQueue {
 }
 
 class ODCandidateQueue private(
-                                private val odCandidates: mutable.Queue[ODCandidate],
+                                private val odCandidates: mutable.Queue[ODCandidateQueue.ODCandidate],
                                 maxBatchSize: Int,
                                 parentActor: ActorRef
                               ) extends CandidateGenerator {
@@ -142,8 +143,8 @@ class ODCandidateQueue private(
   /**
     * Sends a batch of `amount` candidates to the work thief `thief` and moves the send candidates in a pending state.
     *
-    * Use [[com.github.codelionx.dodo.discovery.ODCandidateQueue#ackStolenCandidates]] to completely remove candidates.
-    * Use [[com.github.codelionx.dodo.discovery.ODCandidateQueue#recoverStolenCandidates]] to move the pending stolen
+    * Use [[ODCandidateQueue#ackStolenCandidates]] to completely remove candidates.
+    * Use [[ODCandidateQueue#recoverStolenCandidates]] to move the pending stolen
     * candidates back into this work queue.
     */
   def sendBatchToThief(thief: ActorRef, amount: Int): Unit = {
@@ -157,7 +158,7 @@ class ODCandidateQueue private(
 
   /**
     * Moves the candidates stolen by `thief` via
-    * [[com.github.codelionx.dodo.discovery.ODCandidateQueue#sendBatchToThief]] back into this work queue if they are
+    * [[ODCandidateQueue#sendBatchToThief]] back into this work queue if they are
     * found in the pending stolen candidates queue.
     */
   def recoverStolenCandidates(thief: ActorRef): Try[Unit] = {
@@ -173,7 +174,7 @@ class ODCandidateQueue private(
   /**
     * Completely removes the stolen candidates from this queue.
     *
-    * @see [[com.github.codelionx.dodo.discovery.ODCandidateQueue#sendBatchToThief]]
+    * @see [[ODCandidateQueue#sendBatchToThief]]
     */
   def ackStolenCandidates(thief: ActorRef): Unit =
     toBeStolenOdCandidates.remove(thief)

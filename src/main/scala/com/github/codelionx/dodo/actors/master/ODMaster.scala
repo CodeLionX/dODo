@@ -15,7 +15,7 @@ import com.github.codelionx.dodo.actors.DataHolder.{DataNotReady, DataRef, Fetch
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
 import com.github.codelionx.dodo.actors.Worker._
 import com.github.codelionx.dodo.actors._
-import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking, ODCandidateQueue}
+import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.collection.immutable.Queue
