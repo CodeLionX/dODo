@@ -2,8 +2,8 @@ package com.github.codelionx.dodo.discovery
 
 import akka.actor.ActorRef
 import com.github.codelionx.dodo.DodoException
-import com.github.codelionx.dodo.actors.ODMaster.StolenWork
 import com.github.codelionx.dodo.actors.Worker.CheckForOD
+import com.github.codelionx.dodo.actors.master.ODMaster.StolenWork
 import com.github.codelionx.dodo.discovery.ODCandidateQueue.ODCandidate
 
 import scala.collection.immutable.Queue
