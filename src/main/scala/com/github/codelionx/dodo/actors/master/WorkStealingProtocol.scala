@@ -140,6 +140,7 @@ trait WorkStealingProtocol {
       }
 
     case Terminated(otherMaster) =>
+      log.warning("{} terminated while we were trying to steal work from it!", otherMaster.path)
       context.unwatch(otherMaster)
       updatePendingResponse(otherMaster)
 
@@ -156,9 +157,10 @@ trait WorkStealingProtocol {
     pendingResponses -= actorToRemove
     if (pendingResponses.isEmpty) {
       if (candidateQueue.queueSize == 0 && candidateQueue.pendingSize == 0) {
-        log.info("Work stealing was unsuccessful")
+        log.info("Work stealing failed")
         startDowningProtocol()
       } else {
+        log.info("Work stealing was successful")
         context.become(findingODs())
       }
     }
