@@ -27,7 +27,7 @@ object ODMaster {
 
   val name = "odmaster"
 
-  val requestTimeout: FiniteDuration = 5 seconds
+  val requestTimeout: FiniteDuration = 3 seconds
 
   private[master] val workStealingTopic = "workStealing"
 
