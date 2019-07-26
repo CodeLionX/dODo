@@ -5,7 +5,6 @@ import java.io.File
 import akka.actor.SupervisorStrategy.{Restart, Stop}
 import akka.actor._
 import akka.cluster.Cluster
-import akka.cluster.ClusterEvent.{CurrentClusterState, MemberRemoved, UnreachableMember}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator._
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
@@ -53,7 +52,8 @@ class ODMaster(inputFile: Option[File])
     with DependencyChecking
     with CandidateGenerator
     with ReducedColumnsProtocol
-    with WorkStealingProtocol {
+    with WorkStealingProtocol
+    with DowningProtocol {
 
   import ODMaster._
   import context.dispatcher
@@ -75,7 +75,6 @@ class ODMaster(inputFile: Option[File])
 
   private var pendingPruningResponses = 0
   private var idleWorkers: Seq[ActorRef] = Seq.empty
-  private var otherWorkloads: Seq[(Int, Int, ActorRef)] = Seq.empty
   private var table: Array[TypedColumn[Any]] = Array.empty
 
   override def supervisorStrategy: SupervisorStrategy =
@@ -105,6 +104,7 @@ class ODMaster(inputFile: Option[File])
 
   def unsubscribed(receivedPubSubAcks: Int = 0): Receive =
     workStealingHandling(allowStealing = false) orElse
+    downingHandling() orElse
     reducedColumnsHandling() orElse {
       case SubscribeAck(Subscribe(`reducedColumnsTopic` | `workStealingTopic`, None, `self`)) =>
         val newReceivedPubSubAcks = receivedPubSubAcks + 1
@@ -134,6 +134,7 @@ class ODMaster(inputFile: Option[File])
 
   def uninitialized(first: Boolean): Receive =
     workStealingHandling(allowStealing = false) orElse
+    downingHandling() orElse
     reducedColumnsHandling() orElse {
       case DataRef(tableRef) =>
         table = tableRef
@@ -186,6 +187,7 @@ class ODMaster(inputFile: Option[File])
                reducedColumnsCancellable: Cancellable
              ): Receive =
     workStealingHandling(allowStealing = false) orElse
+    downingHandling(fakeWorkAvailable = first, virulent = !first) orElse
     reducedColumnsHandling() orElse {
       case GetTask if columnIndexTuples.isEmpty =>
         log.debug("Caching idle worker {}", sender.path.name)
@@ -271,6 +273,7 @@ class ODMaster(inputFile: Option[File])
 
   def findingODs(): Receive =
     workStealingHandling(allowStealing = true) orElse
+    downingHandling() orElse
     reducedColumnsHandling() orElse {
       case GetTask =>
         val worker = sender
@@ -296,11 +299,11 @@ class ODMaster(inputFile: Option[File])
         log.debug("Master received reduced columns and is already searching OCDs")
 
       case m => log.debug("Unknown message received in `findingODs`: {}", m)
-
     }
 
   def workStealing: Receive =
     workStealingHandling(allowStealing = false) orElse
+    downingHandling() orElse
     reducedColumnsHandling() orElse
     workStealingImpl orElse {
       case GetTask =>
@@ -315,38 +318,11 @@ class ODMaster(inputFile: Option[File])
       case m => log.debug("Unknown message received in `workStealing`: {}", m)
     }
 
-  def downing(pendingMasters: Set[Address]): Receive =
+  def downing: Receive =
     workStealingHandling(allowStealing = false) orElse
-    reducedColumnsHandling() orElse {
-      case CurrentClusterState((_, _, nodeAddresses, _, _)) =>
-        log.debug("Received current cluster state, {} nodes", nodeAddresses.size)
-        if (nodeAddresses.size > 1) {
-          masterMediator ! Publish(workStealingTopic, GetWorkLoad)
-          context.become(downing(nodeAddresses - cluster.selfAddress))
-        } else {
-          log.info("Last member in cluster and no work available locally.")
-          shutdown()
-        }
-
-      case MemberRemoved(node, _) =>
-        log.info("Node ({}) left the cluster", node)
-        // stop waiting for a workload message from this node
-        updatePendingMasters(pendingMasters, node.address)
-
-      case UnreachableMember(node) =>
-        log.info("Node ({}) detected unreachable, treated as if down", node)
-        // stop waiting for a workload message from this node
-        updatePendingMasters(pendingMasters, node.address)
-
-      case WorkLoad(queueSize: Int, pendingSize: Int) =>
-        log.info("Received workload of size {} from {}", queueSize, sender.path.address)
-        if (queueSize > 0 || pendingSize > 0) {
-          cluster.unsubscribe(self)
-          startWorkStealing()
-        } else {
-          updatePendingMasters(pendingMasters, sender.path.address)
-        }
-    }
+    downingHandling() orElse
+    reducedColumnsHandling() orElse
+    downingImpl
 
   def shutdown(): Unit = {
     log.info("Leaving cluster and shutting down!")
@@ -365,23 +341,6 @@ class ODMaster(inputFile: Option[File])
           case scala.util.Failure(_) => true
         }
       })
-    }
-  }
-
-  def startDowningProtocol(): Unit = {
-    log.info("{} started downingProtocol", self.path.name)
-    cluster.subscribe(self, classOf[MemberRemoved], classOf[UnreachableMember])
-    context.become(downing(Set.empty))
-  }
-
-  def updatePendingMasters(pendingMasters: Set[Address], nodeAddress: Address): Unit = {
-    val updatedPendingMasters = pendingMasters - nodeAddress
-    if (updatedPendingMasters.isEmpty) {
-      log.info("Everybody seems to be finished")
-      shutdown()
-    } else {
-      log.info("Still waiting on work from {}", updatedPendingMasters.map(_.toString).mkString(", "))
-      context.become(downing(updatedPendingMasters))
     }
   }
 }
