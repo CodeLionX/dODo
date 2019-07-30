@@ -58,29 +58,35 @@ class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor
       log.info("Cannot sync state because of {}", error)
 
     case RightNeighbor(address) =>
-      val newNeighbour = stateReplicatorFromAddress(address)
-      newNeighbour ! NewNeighbourIntroduction
-      // this should only happen when we are looking for the other neighbour of a recently failed node
-      log.info("Telling {} I am their new neighbour", newNeighbour)
-      context.become(uninitialized(address.address, leftAddress))
+      if(address.address != rightAddress) {
+        val newNeighbour = stateReplicatorFromAddress(address)
+        newNeighbour ! NewNeighbourIntroduction
+        // this should only happen when we are looking for the other neighbour of a recently failed node
+        log.info("Telling {} I am their new neighbour", newNeighbour)
+        context.become(uninitialized(address.address, leftAddress))
+      }
 
     case LeftNeighbor(address) =>
-      val newNeighbour = stateReplicatorFromAddress(address)
-      newNeighbour ! NewNeighbourIntroduction
-      // this should only happen when we are looking for the other neighbour of a recently failed node
-      log.info("Telling {} I am their new neighbour", newNeighbour)
-      context.become(uninitialized(rightAddress, address.address))
-
-    case NewNeighbourIntroduction =>
-      log.info("{} has joined the cluster", sender.path)
-      neighbourStates += sender -> (Queue.empty, -1)
-      updateNeighbours()
-      addNeighbour(sender, leftAddress, rightAddress)
+      if(address.address != leftAddress) {
+        val newNeighbour = stateReplicatorFromAddress(address)
+        newNeighbour ! NewNeighbourIntroduction
+        // this should only happen when we are looking for the other neighbour of a recently failed node
+        log.info("Telling {} I am their new neighbour", newNeighbour)
+        context.become(uninitialized(rightAddress, address.address))
+      }
 
     case ReplicateState(queue, versionNr) =>
       log.info("Received current state from {}", sender.path)
       neighbourStates += sender -> (queue, versionNr)
       addNeighbour(sender, leftAddress, rightAddress)
+
+    case NewNeighbourIntroduction =>
+      log.debug("{} has joined the cluster", sender.path)
+      neighbourStates += sender -> (Queue.empty, -1)
+      sender ! ReplicateState(Queue.empty, -1)
+      updateNeighbours()
+      addNeighbour(sender, leftAddress, rightAddress)
+
   }
 
   def initialized(): Receive = {
@@ -88,12 +94,14 @@ class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor
       master ! GetState
 
     case CurrentState(state) =>
+      log.info("Replicating current state to both neighbours")
       currentState = state
       replicateState()
 
     case NewNeighbourIntroduction =>
+      log.debug("{} is a new neighbour", sender.path)
       neighbourStates += sender -> (Queue.empty, -1)
-      // figure out on which side this new neighbour is
+      // figure out on which side this new neighbour is and send state
       updateNeighbours()
 
     case ReplicateState(queue, versionNr) =>
@@ -127,8 +135,8 @@ class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor
       updateNeighbours()
 
     case RightNeighbor(address) =>
-      log.info("address of right neighbour: {}", address.toString)
       if (address.address != rightNode.path.address) {
+        log.info("We have a new neighbour")
         val rightMaster = neighbourStates.keys.find(_.path.address == address.address)
         // check if we are updating because of an Introduction or a node-Failure
         if (rightMaster.isDefined && rightMaster.get != leftNode) {
@@ -171,6 +179,7 @@ class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor
         rightNode ! StateVersion(leftNode, neighbourStates(leftNode)._2)
         leftNode ! StateVersion(rightNode, neighbourStates(rightNode)._2)
       } else {
+        log.info("Not enough neighbours anymore")
         context.become(uninitialized(leftNode.path.address, rightNode.path.address))
       }
   }
@@ -216,6 +225,7 @@ class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor
       log.info("Found both neighbours")
       import context.dispatcher
       context.system.scheduler.schedule(0 seconds, replicateStateInterval, master, UpdateState)
+      context.become(initialized())
     }
   }
 }
