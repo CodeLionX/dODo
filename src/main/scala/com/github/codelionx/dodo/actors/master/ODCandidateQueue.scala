@@ -4,7 +4,7 @@ import akka.actor.ActorRef
 import com.github.codelionx.dodo.DodoException
 import com.github.codelionx.dodo.actors.Worker.CheckForOD
 import com.github.codelionx.dodo.actors.master
-import com.github.codelionx.dodo.actors.master.ODMaster.StolenWork
+import com.github.codelionx.dodo.actors.master.WorkStealingProtocol.StolenWork
 import com.github.codelionx.dodo.discovery.CandidateGenerator
 
 import scala.collection.immutable.Queue

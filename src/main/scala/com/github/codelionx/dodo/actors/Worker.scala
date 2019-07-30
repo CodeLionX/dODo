@@ -23,13 +23,13 @@ object Worker {
 
   case class CheckForEquivalency(oeToCheck: (Int, Int))
 
-  case class OrderEquivalent(oe: (Int, Int), isOrderEquiv: Boolean)
+  case class OrderEquivalencyChecked(oe: (Int, Int), isOrderEquiv: Boolean)
 
   case class CheckForOD(odToCheck: Queue[(Seq[Int], Seq[Int])], reducedColumns: Set[Int])
 
-  case class ODsToCheck(newODs: Queue[(Seq[Int], Seq[Int])])
-
   case class ODFound(od: (Seq[Int], Seq[Int]))
+
+  case class NewODCandidates(newODs: Queue[(Seq[Int], Seq[Int])])
 
   // debugging
   val reportingInterval: FiniteDuration = 5 seconds
@@ -77,7 +77,7 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
 
   def workReady(table: Array[TypedColumn[Any]]): Receive = {
     case CheckForEquivalency(oeToCheck) =>
-      sender ! OrderEquivalent(oeToCheck, checkOrderEquivalent(table(oeToCheck._1), table(oeToCheck._2)))
+      sender ! OrderEquivalencyChecked(oeToCheck, checkOrderEquivalent(table(oeToCheck._1), table(oeToCheck._2)))
       sender ! GetTask
       itemsProcessed += 1
 
@@ -112,7 +112,7 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
       }
 
       itemsProcessed += odCandidates.length
-      sender ! ODsToCheck(newCandidates)
+      sender ! NewODCandidates(newCandidates)
       sender ! GetTask
 
     case ReportStatus =>
