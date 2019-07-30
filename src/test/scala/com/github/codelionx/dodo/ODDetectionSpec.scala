@@ -4,8 +4,9 @@ import java.io.File
 
 import akka.actor.{ActorRef, Props, ActorSystem => AkkaActorSystem}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
-import com.github.codelionx.dodo.actors.{ODMaster, Worker}
+import com.github.codelionx.dodo.actors.Worker
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies, Results}
+import com.github.codelionx.dodo.actors.master.ODMaster
 import com.typesafe.config.{Config, ConfigFactory}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
