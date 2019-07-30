@@ -58,7 +58,7 @@ class ODMaster(inputFile: Option[File])
   protected val nWorkers: Int = settings.workers
 
   protected val cluster: Cluster = Cluster(context.system)
-  protected val clusterListener: ActorRef = context.actorOf(ClusterListener.props, ClusterListener.name)
+  protected val clusterListener: ActorRef = context.actorOf(ClusterListener.props(self, Actor.noSender), ClusterListener.name)
   protected val dataHolder: ActorRef = context.actorOf(DataHolder.props(clusterListener), DataHolder.name)
   protected val resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
   protected val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
