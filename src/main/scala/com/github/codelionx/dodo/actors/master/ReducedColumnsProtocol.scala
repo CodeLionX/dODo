@@ -32,6 +32,8 @@ trait ReducedColumnsProtocol {
   def getReducedColumns: Set[Int] = reducedColumns
 
   def reducedColumnsHandling(): Receive = {
+    case GetReducedColumns if sender == self => // ignore
+
     case GetReducedColumns if reducedColumns.nonEmpty =>
       log.info("Sending reduced columns to {}", sender.path)
       sender ! ReducedColumns(reducedColumns)
