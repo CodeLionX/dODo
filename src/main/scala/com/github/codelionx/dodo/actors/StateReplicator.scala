@@ -47,9 +47,6 @@ class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor
   override def preStart(): Unit = {
     log.info("Starting {}", name)
     Reaper.watchWithDefault(self)
-    import context.dispatcher
-    context.system.scheduler.schedule(replicateStateInterval, replicateStateInterval, master, UpdateState)
-    log.info("Replicating state every {} seconds", replicateStateInterval)
     updateNeighbours()
   }
 
@@ -90,16 +87,9 @@ class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor
       updateNeighbours()
       addNeighbour(sender, leftAddress, rightAddress)
 
-    case UpdateState =>
-      log.info("No two neighbours to replicate state to")
-
   }
 
   def initialized(): Receive = {
-    case UpdateState =>
-      log.info("Ask master for current state")
-      master ! GetState
-
     case CurrentState(state) =>
       log.info("Replicating current state to both neighbours")
       currentState = state
@@ -230,6 +220,9 @@ class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor
     }
     if (neighbourStates.contains(leftNode) && neighbourStates.contains(rightNode)) {
       log.info("Found both neighbours")
+      import context.dispatcher
+      context.system.scheduler.schedule(replicateStateInterval, replicateStateInterval, master, GetState)
+      log.info("Replicating state every {} seconds", replicateStateInterval)
       context.become(initialized())
     }
   }
