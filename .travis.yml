@@ -6,7 +6,7 @@ scala:
   - "2.12.8"
 
 jdk:
-  - oraclejdk8
+  - openjdk8
 
 # build all PRs and only master branch and branches starting with either
 # 'deploy-*', 'deploy/*', 'ci-*' or 'ci/*'
