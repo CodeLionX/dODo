@@ -27,10 +27,7 @@ object ODMaster {
 
   val name = "odmaster"
 
-  val requestTimeout: FiniteDuration = 5 seconds
-
-  // for debugging
-  val reportingInterval: FiniteDuration = 5 seconds
+  val requestTimeout: FiniteDuration = 3 seconds
 
   private[master] val workStealingTopic = "workStealing"
 
@@ -40,8 +37,6 @@ object ODMaster {
 
   // messages
   case class FindODs(dataHolder: ActorRef)
-
-  private case object ReportReducedColumnStatus
 
 }
 
@@ -166,9 +161,6 @@ class ODMaster(inputFile: Option[File])
             masterMediator,
             Send(self.path.toStringWithoutAddress, GetReducedColumns, localAffinity = false)
           )
-          if (log.isDebugEnabled) {
-            context.system.scheduler.scheduleOnce(reportingInterval, self, ReportReducedColumnStatus)
-          }
           context.become(pruning(Set.empty, Array.empty, Iterator.empty, first, cancellable))
         }
 
@@ -264,10 +256,6 @@ class ODMaster(inputFile: Option[File])
         workers.foreach(actor => actor ! DataRef(table))
         startWorkStealing()
 
-      case ReportReducedColumnStatus =>
-        log.debug("Waiting for reduced columns...")
-        context.system.scheduler.scheduleOnce(reportingInterval, self, ReportReducedColumnStatus)
-
       case m => log.debug("Unknown message received in `pruning`: {}", m)
     }
 
@@ -295,9 +283,6 @@ class ODMaster(inputFile: Option[File])
         candidateQueue.enqueueNewAndAck(newODs, sender)
         sendWorkToIdleWorkers()
 
-      case ReportReducedColumnStatus =>
-        log.debug("Master received reduced columns and is already searching OCDs")
-
       case m => log.debug("Unknown message received in `findingODs`: {}", m)
     }
 
@@ -312,8 +297,6 @@ class ODMaster(inputFile: Option[File])
       case NewODCandidates(newODs) =>
         candidateQueue.enqueueNewAndAck(newODs, sender)
         sendWorkToIdleWorkers()
-
-      case ReportReducedColumnStatus => // ignore
 
       case m => log.debug("Unknown message received in `workStealing`: {}", m)
     }

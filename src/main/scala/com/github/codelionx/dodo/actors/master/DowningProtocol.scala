@@ -3,12 +3,10 @@ package com.github.codelionx.dodo.actors.master
 import akka.actor.Address
 import akka.cluster.ClusterEvent.{CurrentClusterState, MemberRemoved, UnreachableMember}
 import akka.cluster.pubsub.DistributedPubSubMediator.Publish
-import com.github.codelionx.dodo.actors.master.ODMaster.workStealingTopic
 
 
 object DowningProtocol {
 
-  // downing protocol
   /**
     * Marker trait for all messages that are involved in the downing protocol.
     */
@@ -75,7 +73,7 @@ trait DowningProtocol {
     case CurrentClusterState((_, _, nodeAddresses, _, _)) =>
       log.debug("Received current cluster state, {} nodes", nodeAddresses.size)
       if (nodeAddresses.size > 1) {
-        masterMediator ! Publish(workStealingTopic, GetWorkloadDowning)
+        masterMediator ! Publish(ODMaster.workStealingTopic, GetWorkloadDowning)
         pendingMasters = nodeAddresses - cluster.selfAddress
       } else {
         log.info("Last member in cluster and no work available locally.")
@@ -86,12 +84,12 @@ trait DowningProtocol {
     case MemberRemoved(node, _) =>
       log.info("Node ({}) left the cluster", node)
       // stop waiting for a workload message from this node
-      updatePendingMasters(node.address)
+      removeFromPendingMasters(node.address)
 
     case UnreachableMember(node) =>
       log.info("Node ({}) detected unreachable, treated as if down", node)
       // stop waiting for a workload message from this node
-      updatePendingMasters(node.address)
+      removeFromPendingMasters(node.address)
 
     case WorkloadDowning(stillWorkAvailable) =>
       log.info("{} has {} available", sender.path.address, if (stillWorkAvailable) "work" else "no work")
@@ -99,11 +97,11 @@ trait DowningProtocol {
         cluster.unsubscribe(self)
         startWorkStealing()
       } else {
-        updatePendingMasters(sender.path.address)
+        removeFromPendingMasters(sender.path.address)
       }
   }
 
-  private def updatePendingMasters(nodeAddress: Address): Unit = {
+  private def removeFromPendingMasters(nodeAddress: Address): Unit = {
     pendingMasters -= nodeAddress
     if (pendingMasters.isEmpty) {
       log.info("Everybody seems to be finished")
