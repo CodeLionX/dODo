@@ -1,7 +1,8 @@
 package com.github.codelionx.dodo
 
 import akka.cluster.Cluster
-import com.github.codelionx.dodo.actors.{ODMaster, Reaper}
+import com.github.codelionx.dodo.actors.Reaper
+import com.github.codelionx.dodo.actors.master.ODMaster
 import com.github.codelionx.dodo.cli.MainCommand
 
 import scala.language.postfixOps

@@ -35,3 +35,11 @@ mainClass in assembly := Some("com.github.codelionx.dodo.Main")
 
 // skip tests during assembly
 test in assembly := {}
+
+// don't include logging configuration file
+assemblyMergeStrategy in assembly := {
+  case PathList("logback.xml") => MergeStrategy.discard
+  case x =>
+    val oldStrategy = (assemblyMergeStrategy in assembly).value
+    oldStrategy(x)
+}

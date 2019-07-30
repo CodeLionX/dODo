@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration>
+
+    <appender name="FILE_DODO" class="ch.qos.logback.core.FileAppender">
+        <file>dodo.log</file>
+        <append>false</append>
+        <encoder>
+            <pattern>%30.30X{akkaSource:-local}| %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>all.log</file>
+        <append>true</append>
+        <encoder>
+            <pattern>[%d{HH:mm:ss.SSS} %-5level] %60.60X{akkaSource:-local}| %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="com.github.codelionx.dodo" level="INFO">
+        <appender-ref ref="FILE_DODO" />
+    </logger>
+
+    <root level="DEBUG">
+        <appender-ref ref="FILE" />
+    </root>
+</configuration>
