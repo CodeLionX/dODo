@@ -1,5 +1,6 @@
 package com.github.codelionx.dodo.sidechannel
 
+import akka.actor.ActorRef
 import com.github.codelionx.dodo.types.TypedColumn
 
 import scala.collection.immutable.Queue
@@ -17,7 +18,7 @@ object StreamedDataExchangeProtocol {
   /**
     * Message that wrappes the current state and version number. Sent via the stream sidechannel.
     */
-  case class StateOverStream(data: (Queue[(Seq[Int], Seq[Int])], Int)) extends Serializable
+  case class StateOverStream(data: (ActorRef, Queue[(Seq[Int], Seq[Int])], Int)) extends Serializable
 
   /**
     * Indicates stream initialization.

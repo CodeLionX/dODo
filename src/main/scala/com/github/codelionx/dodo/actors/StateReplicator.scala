@@ -27,7 +27,7 @@ object StateReplicator {
 
   case class StateVersion(failedNode: ActorRef, versionNr: Int)
 
-  val replicateStateInterval: FiniteDuration = 20 seconds
+  val replicateStateInterval: FiniteDuration = 5 seconds
 }
 
 class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
@@ -68,7 +68,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
       replicateStateViaStream(state)
 
     case ReplicateState(state, versionNr) =>
-      updateNeighboursState(sender, (state, versionNr))
+      updateNeighboursState(sender, state, versionNr)
 
     case LeftNeighborRef(newNeighbour) =>
       updateLeftNeighbour(newNeighbour)
@@ -104,12 +104,12 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
       }
 
     case SidechannelRef(sourceRef) =>
-      log.debug("Receiving state over sidechannel from {}", sender.path)
+      log.debug("Receiving state over sidechannel from {}", sender)
       ActorStreamConnector.consumeStateRefVia(sourceRef, self)
 
     case stateMessage: StateOverStream =>
       log.debug("Received data over stream.")
-      updateNeighboursState(sender, stateMessage.data)
+      updateNeighboursState(stateMessage.data._1, stateMessage.data._2, stateMessage.data._3)
       sender ! StreamACK
 
     case StreamComplete =>
@@ -126,8 +126,8 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   }
 
   def sendStateViaStream(receiver: ActorRef, currentState: Queue[(Seq[Int], Seq[Int])]): Unit = {
-    log.info("Sending state via sidechannel to {}", sender.path)
-    val versionedState = (currentState, stateVersion)
+    log.info("Sending state via sidechannel to {}", sender)
+    val versionedState = (receiver, currentState, stateVersion)
     val state = ActorStreamConnector.prepareStateRef(versionedState)
     import context.dispatcher
     state pipeTo receiver
@@ -157,19 +157,17 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
     log.info("Setting {} as my right neighbour", newNeighbour)
     if (neighbourStates.contains(rightNode)) {
       neighbourStates -= rightNode
-    } else {
-      log.info("This is why the actor kept failing")
-    }
+    } 
     rightNode = newNeighbour
   }
 
-  def updateNeighboursState(neighbour: ActorRef, state: (Queue[(Seq[Int], Seq[Int])], Int)): Unit = {
-    if (neighbourStates.contains(sender) && neighbourStates(sender)._2 < state._2) {
-      neighbourStates(sender) = state
+  def updateNeighboursState(neighbour: ActorRef, state: Queue[(Seq[Int], Seq[Int])], versionNr: Int): Unit = {
+    if (neighbourStates.contains(sender) && neighbourStates(sender)._2 < versionNr) {
+      neighbourStates(sender) = (state, versionNr)
     } else {
-      neighbourStates += sender -> state
+      neighbourStates += sender -> (state, versionNr)
     }
-    log.info("Received state with version Nr {} from {}", state._2, sender)
+    log.info("Received state with version Nr {} from {}", versionNr, neighbour)
   }
 
   def startReplication(): Unit = {

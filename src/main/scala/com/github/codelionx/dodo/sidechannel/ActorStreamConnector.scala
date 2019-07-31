@@ -76,7 +76,7 @@ object ActorStreamConnector {
     * a [[com.github.codelionx.dodo.actors.DataHolder.SidechannelRef]]. The returned future can be piped to another
     * actor reference (possibly on another node). See [[akka.pattern.pipe]].
     */
-  def prepareStateRef(data: (Queue[(Seq[Int], Seq[Int])], Int))(implicit context: ActorContext): Future[SidechannelRef] = {
+  def prepareStateRef(data: (ActorRef, Queue[(Seq[Int], Seq[Int])], Int))(implicit context: ActorContext): Future[SidechannelRef] = {
     val system: ActorSystem = context.system
     val serialization = SerializationExtension(system)
     import system.dispatcher
