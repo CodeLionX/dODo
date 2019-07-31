@@ -108,5 +108,8 @@ atlassian-ide-plugin.xml
 data
 testData/results.txt
 
+# unneccessary script
+test.sh
+
 # intellij (openjdk) pid files
 .attach_pid*

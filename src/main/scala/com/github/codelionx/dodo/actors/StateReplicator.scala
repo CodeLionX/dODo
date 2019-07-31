@@ -13,7 +13,7 @@ object StateReplicator {
 
   val name = "statereplicator"
 
-  def props(master: ActorRef, clusterListener: ActorRef): Props = Props( new StateReplicator(master, clusterListener))
+  def props(master: ActorRef): Props = Props( new StateReplicator(master))
 
   // messages
   case object GetState
@@ -27,7 +27,7 @@ object StateReplicator {
   val replicateStateInterval: FiniteDuration = 5 seconds
 }
 
-class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor with ActorLogging {
+class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   import StateReplicator._
 
   private var stateVersion: Int = 0
@@ -73,17 +73,24 @@ class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor
       }
       log.info("Received state with version Nr {} from {}", versionNr, sender)
 
-      // Recovery Protocol
+    case LeftNeighborRef(newNeighbour) =>
+      updateLeftNeighbour(newNeighbour)
+
+    case RightNeighborRef(newNeighbour) =>
+      updateRightNeighbour(newNeighbour)
+
     case LeftNeighborDown(newNeighbour) =>
+      log.info("Left neighbour down. Comparing version with {}. My current version is {}", newNeighbour.path, neighbourStates(leftNode)._2)
       newNeighbour ! StateVersion(leftNode, neighbourStates(leftNode)._2)
       updateLeftNeighbour(newNeighbour)
 
     case RightNeighborDown(newNeighbour) =>
+      log.info("Left neighbour down. Comparing version with {}. My current version is {}", newNeighbour.path, neighbourStates(leftNode)._2)
       newNeighbour ! StateVersion(rightNode, neighbourStates(rightNode)._2)
       updateRightNeighbour(newNeighbour)
 
     case StateVersion(failedNode, versionNr) =>
-      log.info("{} has version {} of {}'s state", sender, versionNr, failedNode)
+      log.info("{} has version {} of {}'s state. I have {}", sender, versionNr, failedNode, neighbourStates(failedNode)._2)
       if (neighbourStates(failedNode)._2 > versionNr) {
         master ! NewODCandidates(neighbourStates(failedNode)._1)
       }
@@ -118,7 +125,7 @@ class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor
   def startReplication(): Unit = {
     import com.github.codelionx.dodo.GlobalImplicits._
     import context.dispatcher
-    log.info("Debugging enabled: performing regular status reporting every {}", replicateStateInterval.pretty)
+    log.info("Found both neighbours. Replicating state every {}", replicateStateInterval.pretty)
     context.system.scheduler.schedule(0 seconds, replicateStateInterval, master, GetState)
     context.become(initialized())
   }

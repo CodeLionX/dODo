@@ -74,9 +74,11 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
 
     case MemberRemoved(node, _) =>
       log.debug("Node ({}) left the cluster", node)
+      updateNeighborsRemoved(members, node)
       context.become(internalReceive(members.filterNot(_.member == node), pendingNodes.filterNot(_ == node)))
 
     case UnreachableMember(node) =>
+      updateNeighborsRemoved(members, node)
       log.debug("Node ({}) detected unreachable", node)
 
     case ReachableMember(node) =>
@@ -103,13 +105,14 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
       log.debug("Received ActorRefs from {}", sender.path)
       pendingNodes.find(_.address == sender.path.address) match {
         case Some(node) =>
-          val newMembers = (members :+ MemberActors(node, sender, otherMaster, otherSR)).sorted
+          val newMember = MemberActors(node, sender, otherMaster, otherSR)
+          val newMembers = (members :+ newMember).sorted
           val newPendingNodes = pendingNodes.filterNot(_ == node)
+          updateNeighborsNew(newMembers, newMember)
           context.become(internalReceive(newMembers, newPendingNodes))
         case None =>
           log.warning("Received actor refs of a node that we don't know! {}", m)
       }
-
   }
 
   private def getLeftNeighbor(members: Seq[MemberActors]): Try[MemberActors] = Try {
@@ -126,6 +129,40 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
       case  -1   => throwSelfNotFound
       case `end` => members.head
       case   i   => members(i + 1)
+    }
+  }
+
+  private def isRightNeighbor(selfIndex: Int, otherIndex: Int, lastIndex: Int): Boolean = {
+    val isNeighbor = (selfIndex + 1 == otherIndex) || (selfIndex == lastIndex && otherIndex == 0)
+    isNeighbor
+  }
+
+  private def isLeftNeighbor(selfIndex: Int, otherIndex: Int, lastIndex: Int): Boolean = {
+    val isNeighbor = (selfIndex == otherIndex + 1) || (otherIndex == lastIndex && selfIndex == 0)
+    isNeighbor
+  }
+
+  private def updateNeighborsNew(members: Seq[MemberActors], newMember: MemberActors): Unit = {
+    val selfIndex = members.map(_.member).indexOf(selfMember)
+    if (isRightNeighbor(selfIndex, members.indexOf(newMember), members.length-1)) {
+      stateReplicator ! RightNeighborRef(newMember.stateReplicator)
+    } else if (isLeftNeighbor(selfIndex, members.indexOf(newMember), members.length-1)) {
+      stateReplicator ! LeftNeighborRef(newMember.stateReplicator)
+    }
+  }
+
+  private def updateNeighborsRemoved(members: Seq[MemberActors], removedMember: Member): Unit = {
+    val selfIndex = members.map(_.member).indexOf(selfMember)
+    val removedIndex = members.map(_.member).indexOf(removedMember)
+    val newMembers = members.filterNot(_.member == removedMember)
+    if (isRightNeighbor(selfIndex, removedIndex, members.length-1)) {
+      getRightNeighbor(newMembers)
+        .map(member => stateReplicator ! RightNeighborDown(member.stateReplicator))
+        .recover(sendError)
+    } else if (isLeftNeighbor(selfIndex, removedIndex, members.length-1)) {
+      getLeftNeighbor(newMembers)
+        .map(member => stateReplicator ! LeftNeighborDown(member.stateReplicator))
+        .recover(sendError)
     }
   }
 
