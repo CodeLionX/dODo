@@ -2,6 +2,10 @@ package com.github.codelionx.dodo.sidechannel
 
 import com.github.codelionx.dodo.types.TypedColumn
 
+import scala.collection.immutable.Queue
+
+
+
 
 object StreamedDataExchangeProtocol {
 
@@ -9,6 +13,11 @@ object StreamedDataExchangeProtocol {
     * Message that wrappes the relational data. Sent via the stream sidechannel.
     */
   case class DataOverStream(data: Array[TypedColumn[Any]]) extends Serializable
+
+  /**
+    * Message that wrappes the current state and version number. Sent via the stream sidechannel.
+    */
+  case class StateOverStream(data: (Queue[(Seq[Int], Seq[Int])], Int)) extends Serializable
 
   /**
     * Indicates stream initialization.

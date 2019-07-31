@@ -1,14 +1,17 @@
 package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.pattern.pipe
 import com.github.codelionx.dodo.actors.ClusterListener.{LeftNeighborDown, LeftNeighborRef, RightNeighborDown, RightNeighborRef}
+import com.github.codelionx.dodo.actors.DataHolder.SidechannelRef
 import com.github.codelionx.dodo.actors.Worker.NewODCandidates
+import com.github.codelionx.dodo.sidechannel.ActorStreamConnector
+import com.github.codelionx.dodo.sidechannel.StreamedDataExchangeProtocol.{StateOverStream, StreamACK, StreamComplete, StreamInit}
 
 import scala.collection.immutable.Queue
 import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.language.postfixOps
-
 object StateReplicator {
 
   val name = "statereplicator"
@@ -24,7 +27,7 @@ object StateReplicator {
 
   case class StateVersion(failedNode: ActorRef, versionNr: Int)
 
-  val replicateStateInterval: FiniteDuration = 5 seconds
+  val replicateStateInterval: FiniteDuration = 10 seconds
 }
 
 class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
@@ -62,16 +65,10 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
 
   def initialized(): Receive = {
     case CurrentState(state) =>
-      log.info("Replicating current state to both neighbours")
-      replicateState(state)
+      replicateStateViaStream(state)
 
     case ReplicateState(state, versionNr) =>
-      if (neighbourStates.contains(sender) && neighbourStates(sender)._2 < versionNr) {
-        neighbourStates(sender) = (state, versionNr)
-      } else {
-        neighbourStates += sender -> (state, versionNr)
-      }
-      log.info("Received state with version Nr {} from {}", versionNr, sender)
+      updateNeighboursState(sender, (state, versionNr))
 
     case LeftNeighborRef(newNeighbour) =>
       updateLeftNeighbour(newNeighbour)
@@ -95,6 +92,33 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
         master ! NewODCandidates(neighbourStates(failedNode)._1)
       }
       neighbourStates -= failedNode
+
+    case SidechannelRef(sourceRef) =>
+      log.debug("Receiving state over sidechannel from {}", sender.path)
+      ActorStreamConnector.consumeStateRefVia(sourceRef, self)
+
+    case stateMessage: StateOverStream =>
+      log.debug("Received data over stream.")
+      updateNeighboursState(sender, stateMessage.data)
+      sender ! StreamACK
+
+    case StreamComplete =>
+      log.debug("Stream completed!", name)
+      sender ! StreamACK
+  }
+
+  def replicateStateViaStream(currentState: Queue[(Seq[Int], Seq[Int])]): Unit = {
+    sendStateViaStream(leftNode, currentState)
+    sendStateViaStream(rightNode, currentState)
+  }
+
+  def sendStateViaStream(receiver: ActorRef, currentState: Queue[(Seq[Int], Seq[Int])]): Unit = {
+    log.info("Sending state via sidechannel to {}", sender.path)
+    val versionedState = (currentState, stateVersion)
+    val state = ActorStreamConnector.prepareStateRef(versionedState)
+    import context.dispatcher
+    state pipeTo receiver
+    stateVersion += 1
   }
 
   def replicateState(currentState: Queue[(Seq[Int], Seq[Int])]): Unit = {
@@ -109,17 +133,24 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   }
 
   def updateLeftNeighbour(newNeighbour: ActorRef): Unit = {
-    // figure out on which side this new neighbour is
     log.info("Setting {} as my left neighbour", newNeighbour)
     neighbourStates -= leftNode
     leftNode = newNeighbour
   }
 
   def updateRightNeighbour(newNeighbour: ActorRef): Unit = {
-    // figure out on which side this new neighbour is
     log.info("Setting {} as my right neighbour", newNeighbour)
     neighbourStates -= rightNode
     rightNode = newNeighbour
+  }
+
+  def updateNeighboursState(neighbour: ActorRef, state: (Queue[(Seq[Int], Seq[Int])], Int)): Unit = {
+    if (neighbourStates.contains(sender) && neighbourStates(sender)._2 < state._2) {
+      neighbourStates(sender) = state
+    } else {
+      neighbourStates += sender -> state
+    }
+    log.info("Received state with version Nr {} from {}", state._2, sender)
   }
 
   def startReplication(): Unit = {
