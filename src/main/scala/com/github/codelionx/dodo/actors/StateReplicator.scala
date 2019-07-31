@@ -1,9 +1,8 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, ActorSelection, Address, Props, RootActorPath, Terminated}
-import akka.cluster.Cluster
-import com.github.codelionx.dodo.actors.ClusterListener.{GetLeftNeighbor, GetRightNeighbor, LeftNeighbor, RightNeighbor}
-import com.github.codelionx.dodo.actors.Worker.ODsToCheck
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import com.github.codelionx.dodo.actors.ClusterListener.{LeftNeighborDown, LeftNeighborRef, RightNeighborDown, RightNeighborRef}
+import com.github.codelionx.dodo.actors.Worker.NewODCandidates
 
 import scala.collection.immutable.Queue
 import scala.collection.mutable
@@ -21,15 +20,11 @@ object StateReplicator {
 
   case class CurrentState(state: Queue[(Seq[Int], Seq[Int])])
 
-  case object NewNeighbourIntroduction
-
   case class ReplicateState(queue: Queue[(Seq[Int], Seq[Int])], versionNr: Int)
 
   case class StateVersion(failedNode: ActorRef, versionNr: Int)
 
   val replicateStateInterval: FiniteDuration = 5 seconds
-
-  private case object UpdateState
 }
 
 class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor with ActorLogging {
@@ -37,193 +32,94 @@ class StateReplicator(master: ActorRef, clusterListener: ActorRef) extends Actor
 
   private var stateVersion: Int = 0
   private var neighbourStates: mutable.Map[ActorRef, (Queue[(Seq[Int], Seq[Int])], Int)] = mutable.Map.empty
-  private var leftNode: ActorRef = _
-  private var rightNode: ActorRef = _
-  private var currentState: Queue[(Seq[Int], Seq[Int])] = Queue.empty
-
-  private val userGuardian = "user"
-  private val cluster = Cluster(context.system)
+  private var leftNode: ActorRef = Actor.noSender
+  private var rightNode: ActorRef = Actor.noSender
 
   override def preStart(): Unit = {
     log.info("Starting {}", name)
     Reaper.watchWithDefault(self)
-    updateNeighbours()
   }
 
-  override def receive: Receive = uninitialized(cluster.selfAddress, cluster.selfAddress)
+  override def receive: Receive = uninitialized(false, false)
 
-  def uninitialized(rightAddress: Address, leftAddress: Address): Receive = {
-    case akka.actor.Status.Failure(error) =>
-      log.info("Cannot sync state because of {}", error)
-
-    case RightNeighbor(address) =>
-      if(address.address != rightAddress) {
-        val newNeighbour = stateReplicatorFromAddress(address)
-        newNeighbour ! NewNeighbourIntroduction
-        // this should only happen when we are looking for the other neighbour of a recently failed node
-        log.info("Telling {} I am their new neighbour", newNeighbour)
-        context.become(uninitialized(address.address, leftAddress))
+  def uninitialized(foundRightNeighbour: Boolean, foundLeftNeighbour: Boolean): Receive = {
+    case LeftNeighborRef(leftNeighbour) =>
+      updateLeftNeighbour(leftNeighbour)
+      if (foundRightNeighbour) {
+        startReplication()
+      } else {
+        context.become(uninitialized(foundRightNeighbour, true))
       }
 
-    case LeftNeighbor(address) =>
-      if(address.address != leftAddress) {
-        val newNeighbour = stateReplicatorFromAddress(address)
-        newNeighbour ! NewNeighbourIntroduction
-        // this should only happen when we are looking for the other neighbour of a recently failed node
-        log.info("Telling {} I am their new neighbour", newNeighbour)
-        context.become(uninitialized(rightAddress, address.address))
+    case RightNeighborRef(rightNeighbour) =>
+      updateRightNeighbour(rightNeighbour)
+      if (foundLeftNeighbour) {
+        startReplication()
+      } else {
+        context.become(uninitialized(true, foundLeftNeighbour))
       }
-
-    case ReplicateState(queue, versionNr) =>
-      log.info("Received current state from {}", sender.path)
-      neighbourStates += sender -> (queue, versionNr)
-      sender ! ReplicateState(Queue.empty, -1)
-      addNeighbour(sender, leftAddress, rightAddress)
-
-    case NewNeighbourIntroduction =>
-      log.debug("{} has joined the cluster", sender.path)
-      neighbourStates += sender -> (Queue.empty, -1)
-      sender ! ReplicateState(Queue.empty, -1)
-      updateNeighbours()
-      addNeighbour(sender, leftAddress, rightAddress)
-
   }
 
   def initialized(): Receive = {
     case CurrentState(state) =>
       log.info("Replicating current state to both neighbours")
-      currentState = state
-      replicateState()
+      replicateState(state)
 
-    case NewNeighbourIntroduction =>
-      log.debug("{} is a new neighbour", sender.path)
-      neighbourStates += sender -> (Queue.empty, -1)
-      // figure out on which side this new neighbour is and send state
-      updateNeighbours()
-
-    case ReplicateState(queue, versionNr) =>
-      if (neighbourStates.contains(sender)) {
-        if (neighbourStates(sender)._2 < versionNr) {
-          neighbourStates += sender -> (queue, versionNr)
-          log.info("Received current state from {}", sender)
-        }
+    case ReplicateState(state, versionNr) =>
+      if (neighbourStates.contains(sender) && neighbourStates(sender)._2 < versionNr) {
+        neighbourStates(sender) = (state, versionNr)
       } else {
-        updateNeighbours()
-        neighbourStates += sender -> (queue, versionNr)
+        neighbourStates += sender -> (state, versionNr)
       }
+      log.info("Received state with version Nr {} from {}", versionNr, sender)
 
-    case Terminated(otherMaster) =>
-      log.info("Detected {} has terminated", otherMaster)
-      context.unwatch(otherMaster)
-      if (otherMaster == rightNode) {
-        clusterListener ! GetRightNeighbor
-      } else {
-        clusterListener ! GetLeftNeighbor
-      }
+      // Recovery Protocol
+    case LeftNeighborDown(newNeighbour) =>
+      newNeighbour ! StateVersion(leftNode, neighbourStates(leftNode)._2)
+      updateLeftNeighbour(newNeighbour)
+
+    case RightNeighborDown(newNeighbour) =>
+      newNeighbour ! StateVersion(rightNode, neighbourStates(rightNode)._2)
+      updateRightNeighbour(newNeighbour)
 
     case StateVersion(failedNode, versionNr) =>
       log.info("{} has version {} of {}'s state", sender, versionNr, failedNode)
-      neighbourStates += sender -> (Queue.empty, -1)
       if (neighbourStates(failedNode)._2 > versionNr) {
-        master ! ODsToCheck(neighbourStates(failedNode)._1)
+        master ! NewODCandidates(neighbourStates(failedNode)._1)
       }
       neighbourStates -= failedNode
-      // this will also replicate the new state to the updated neighbours
-      updateNeighbours()
-
-    case RightNeighbor(address) =>
-      if (address.address != rightNode.path.address) {
-        log.info("We have a new neighbour")
-        val rightMaster = neighbourStates.keys.find(_.path.address == address.address)
-        // check if we are updating because of an Introduction or a node-Failure
-        if (rightMaster.isDefined && rightMaster.get != leftNode) {
-          neighbourStates -= rightNode
-          context.unwatch(rightNode)
-          rightNode = rightMaster.get
-          context.watch(rightNode)
-          replicateState()
-          log.info("{} set as right neighbour", rightMaster.get)
-        } else {
-          // it seems the previous neighbour failed
-          val newNeighbour = stateReplicatorFromAddress(address)
-          newNeighbour ! StateVersion(rightNode, neighbourStates(rightNode)._2)
-          // this should only happen when we are looking for the other neighbour of a recently failed node
-          log.info("Syncing for {}'s state with {}", rightNode, newNeighbour)
-        }
-      }
-
-    case LeftNeighbor(address) =>
-      if (address.address != leftNode.path.address) {
-        val leftMaster = neighbourStates.keys.find(_.path.address == address.address)
-        if (leftMaster.isDefined) {
-          neighbourStates -= leftNode
-          context.unwatch(leftNode)
-          leftNode = leftMaster.get
-          context.watch(leftNode)
-          replicateState()
-          log.info("{} set as left neighbour", leftMaster.get)
-        } else {
-          val newNeighbour = stateReplicatorFromAddress(address)
-          newNeighbour ! StateVersion(leftNode, neighbourStates(leftNode)._2)
-          // this should only happen when we are looking for the other neighbour of a recently failed node
-          log.info("Syncing for {}'s state with {}", leftNode, newNeighbour)
-        }
-      }
-
-    case akka.actor.Status.Failure(_) =>
-      if(neighbourStates.size > 1) {
-        // only the one that has not failed will answer
-        rightNode ! StateVersion(leftNode, neighbourStates(leftNode)._2)
-        leftNode ! StateVersion(rightNode, neighbourStates(rightNode)._2)
-      } else {
-        log.info("Not enough neighbours anymore")
-        context.become(uninitialized(leftNode.path.address, rightNode.path.address))
-      }
   }
 
-  def stateReplicatorFromAddress(address: RootActorPath): ActorSelection = {
-    context.actorSelection(address / userGuardian / ODMaster.name / name)
+  def replicateState(currentState: Queue[(Seq[Int], Seq[Int])]): Unit = {
+    sendState(leftNode, currentState)
+    sendState(rightNode, currentState)
   }
 
-  def replicateState(): Unit = {
-    if (leftNode != null) {
-      sendState(leftNode)
-    }
-    if (rightNode != null) {
-      sendState(rightNode)
-    }
-  }
-
-  def sendState(receiver: ActorRef): Unit = {
+  def sendState(receiver: ActorRef, currentState: Queue[(Seq[Int], Seq[Int])]): Unit = {
     receiver ! ReplicateState(currentState, stateVersion)
     log.info("Sending {} my current state", receiver)
     stateVersion += 1
   }
 
-  def updateNeighbours(): Unit = {
-    clusterListener ! GetLeftNeighbor
-    clusterListener ! GetRightNeighbor
+  def updateLeftNeighbour(newNeighbour: ActorRef): Unit = {
+    // figure out on which side this new neighbour is
+    log.info("Setting {} as my left neighbour", newNeighbour)
+    neighbourStates -= leftNode
+    leftNode = newNeighbour
   }
 
-  def addNeighbour(potentialNeighbour: ActorRef, leftAddress: Address, rightAddress: Address): Unit = {
+  def updateRightNeighbour(newNeighbour: ActorRef): Unit = {
     // figure out on which side this new neighbour is
+    log.info("Setting {} as my right neighbour", newNeighbour)
+    neighbourStates -= rightNode
+    rightNode = newNeighbour
+  }
 
-    if (potentialNeighbour.path.address == rightAddress) {
-      log.info("Setting {} as my right neighbour", potentialNeighbour)
-      rightNode = potentialNeighbour
-      context.watch(potentialNeighbour)
-    }
-    if (potentialNeighbour.path.address == leftAddress) {
-      log.info("Setting {} as my left neighbour", potentialNeighbour)
-      leftNode = potentialNeighbour
-      context.watch(potentialNeighbour)
-    }
-    if (neighbourStates.contains(leftNode) && neighbourStates.contains(rightNode)) {
-      log.info("Found both neighbours")
-      import context.dispatcher
-      context.system.scheduler.schedule(replicateStateInterval, replicateStateInterval, master, GetState)
-      log.info("Replicating state every {} seconds", replicateStateInterval)
-      context.become(initialized())
-    }
+  def startReplication(): Unit = {
+    import com.github.codelionx.dodo.GlobalImplicits._
+    import context.dispatcher
+    log.info("Debugging enabled: performing regular status reporting every {}", replicateStateInterval.pretty)
+    context.system.scheduler.schedule(0 seconds, replicateStateInterval, master, GetState)
+    context.become(initialized())
   }
 }

@@ -1,6 +1,6 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, Props, RootActorPath}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, RootActorPath}
 import akka.cluster.ClusterEvent._
 import akka.cluster.{Cluster, Member}
 import com.github.codelionx.dodo.DodoException
@@ -16,9 +16,13 @@ object ClusterListener {
 
   case object GetLeftNeighbor
   case class LeftNeighbor(address: RootActorPath)
+  case class LeftNeighborRef(neighbor: ActorRef)
+  case class LeftNeighborDown(newNeighbor: ActorRef)
 
   case object GetRightNeighbor
   case class RightNeighbor(address: RootActorPath)
+  case class RightNeighborRef(neighbor: ActorRef)
+  case class RightNeighborDown(newNeighbor: ActorRef)
 
   case object GetNumberOfNodes
   case class NumberOfNodes(number: Int)
