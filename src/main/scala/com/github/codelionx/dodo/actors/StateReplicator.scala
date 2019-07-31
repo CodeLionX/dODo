@@ -27,7 +27,7 @@ object StateReplicator {
 
   case class StateVersion(failedNode: ActorRef, versionNr: Int)
 
-  val replicateStateInterval: FiniteDuration = 10 seconds
+  val replicateStateInterval: FiniteDuration = 20 seconds
 }
 
 class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
@@ -134,13 +134,19 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
 
   def updateLeftNeighbour(newNeighbour: ActorRef): Unit = {
     log.info("Setting {} as my left neighbour", newNeighbour)
-    neighbourStates -= leftNode
+    if (neighbourStates.contains(leftNode)) {
+      neighbourStates -= leftNode
+    } 
     leftNode = newNeighbour
   }
 
   def updateRightNeighbour(newNeighbour: ActorRef): Unit = {
     log.info("Setting {} as my right neighbour", newNeighbour)
-    neighbourStates -= rightNode
+    if (neighbourStates.contains(rightNode)) {
+      neighbourStates -= rightNode
+    } else {
+      log.info("This is why the actor kept failing")
+    }
     rightNode = newNeighbour
   }
 
