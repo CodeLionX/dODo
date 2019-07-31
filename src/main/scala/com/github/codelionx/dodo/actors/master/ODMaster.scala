@@ -12,6 +12,7 @@ import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, NumberOfNodes}
 import com.github.codelionx.dodo.actors.DataHolder.{DataNotReady, DataRef, FetchDataFromCluster, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
+import com.github.codelionx.dodo.actors.StateReplicator.{CurrentState, GetState}
 import com.github.codelionx.dodo.actors.Worker._
 import com.github.codelionx.dodo.actors._
 import com.github.codelionx.dodo.actors.master.ReducedColumnsProtocol.{GetReducedColumns, ReducedColumns}
@@ -283,6 +284,11 @@ class ODMaster(inputFile: Option[File])
       case NewODCandidates(newODs) =>
         candidateQueue.enqueueNewAndAck(newODs, sender)
         sendWorkToIdleWorkers()
+
+      case GetState =>
+        val currentState = candidateQueue.shareableState()
+        sender ! CurrentState(currentState)
+        log.debug("Send current state to be replicated")
 
       case m => log.debug("Unknown message received in `findingODs`: {}", m)
     }
