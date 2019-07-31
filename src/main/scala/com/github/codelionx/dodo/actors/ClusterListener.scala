@@ -108,7 +108,7 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
           val newMember = MemberActors(node, sender, otherMaster, otherSR)
           val newMembers = (members :+ newMember).sorted
           val newPendingNodes = pendingNodes.filterNot(_ == node)
-          updateNeighborsNew(newMembers, newMember)
+          updateNeighborsNew(newMembers)
           context.become(internalReceive(newMembers, newPendingNodes))
         case None =>
           log.warning("Received actor refs of a node that we don't know! {}", m)
@@ -142,13 +142,13 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
     isNeighbor
   }
 
-  private def updateNeighborsNew(members: Seq[MemberActors], newMember: MemberActors): Unit = {
-    val selfIndex = members.map(_.member).indexOf(selfMember)
-    if (isRightNeighbor(selfIndex, members.indexOf(newMember), members.length-1)) {
-      stateReplicator ! RightNeighborRef(newMember.stateReplicator)
-    } else if (isLeftNeighbor(selfIndex, members.indexOf(newMember), members.length-1)) {
-      stateReplicator ! LeftNeighborRef(newMember.stateReplicator)
-    }
+  private def updateNeighborsNew(members: Seq[MemberActors]): Unit = {
+    getRightNeighbor(members)
+      .map(member => stateReplicator ! RightNeighborRef(member.stateReplicator))
+      .recover(sendError)
+    getLeftNeighbor(members)
+      .map(member => stateReplicator ! LeftNeighborRef(member.stateReplicator))
+      .recover(sendError)
   }
 
   private def updateNeighborsRemoved(members: Seq[MemberActors], removedMember: Member): Unit = {
