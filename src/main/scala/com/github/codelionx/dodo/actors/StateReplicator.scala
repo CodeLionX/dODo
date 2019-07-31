@@ -77,21 +77,31 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
       updateRightNeighbour(newNeighbour)
 
     case LeftNeighborDown(newNeighbour) =>
-      log.info("Left neighbour down. Comparing version with {}. My current version is {}", newNeighbour.path, neighbourStates(leftNode)._2)
-      newNeighbour ! StateVersion(leftNode, neighbourStates(leftNode)._2)
+      log.info("Left neighbour down. Comparing version with {}.", newNeighbour.path)
+      if (neighbourStates.contains(leftNode)) {
+        newNeighbour ! StateVersion(leftNode, neighbourStates(leftNode)._2)
+      } else {
+        newNeighbour ! StateVersion(leftNode, -1)
+      }
       updateLeftNeighbour(newNeighbour)
 
     case RightNeighborDown(newNeighbour) =>
-      log.info("Left neighbour down. Comparing version with {}. My current version is {}", newNeighbour.path, neighbourStates(leftNode)._2)
-      newNeighbour ! StateVersion(rightNode, neighbourStates(rightNode)._2)
+      log.info("Left neighbour down. Comparing version with {}.", newNeighbour.path)
+      if (neighbourStates.contains(rightNode)) {
+        newNeighbour ! StateVersion(rightNode, neighbourStates(rightNode)._2)
+      } else {
+        newNeighbour ! StateVersion(rightNode, -1)
+      }
       updateRightNeighbour(newNeighbour)
 
     case StateVersion(failedNode, versionNr) =>
-      log.info("{} has version {} of {}'s state. I have {}", sender, versionNr, failedNode, neighbourStates(failedNode)._2)
-      if (neighbourStates(failedNode)._2 > versionNr) {
-        master ! NewODCandidates(neighbourStates(failedNode)._1)
+      log.info("{} has version {} of {}'s state.", sender, versionNr, failedNode)
+      if (neighbourStates.contains(failedNode)) {
+        if (neighbourStates(failedNode)._2 > versionNr) {
+          master ! NewODCandidates(neighbourStates(failedNode)._1)
+        }
+        neighbourStates -= failedNode
       }
-      neighbourStates -= failedNode
 
     case SidechannelRef(sourceRef) =>
       log.debug("Receiving state over sidechannel from {}", sender.path)
@@ -104,6 +114,9 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
 
     case StreamComplete =>
       log.debug("Stream completed!", name)
+      sender ! StreamACK
+
+    case StreamInit =>
       sender ! StreamACK
   }
 
@@ -136,7 +149,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
     log.info("Setting {} as my left neighbour", newNeighbour)
     if (neighbourStates.contains(leftNode)) {
       neighbourStates -= leftNode
-    } 
+    }
     leftNode = newNeighbour
   }
 

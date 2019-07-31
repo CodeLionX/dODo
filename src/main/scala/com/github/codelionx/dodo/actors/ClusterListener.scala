@@ -82,6 +82,7 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
       log.debug("Node ({}) detected unreachable", node)
 
     case ReachableMember(node) =>
+      updateNeighborsNew(members)
       log.debug("Node ({}) detected reachable again", node)
 
     case GetNumberOfNodes =>

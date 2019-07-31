@@ -117,7 +117,7 @@ object ActorStreamConnector {
         case scala.util.Success(msg) => msg
         case scala.util.Failure(cause) => throw new DodoException("Deserialization of message failed", cause)
       }
-      .runWith(Sink.actorRef(actorRef, StreamComplete))
+      .runWith(Sink.actorRefWithAck(actorRef, StreamInit, StreamACK, StreamComplete))
   }
 
 
