@@ -4,6 +4,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Props, RootActorPath}
 import akka.cluster.ClusterEvent._
 import akka.cluster.{Cluster, Member}
 import com.github.codelionx.dodo.DodoException
+import com.github.codelionx.dodo.actors.master.ODMaster
 
 import scala.util.Try
 
@@ -12,7 +13,7 @@ object ClusterListener {
 
   val name = "clistener"
 
-  def props: Props = Props[ClusterListener]
+  def props(master: ActorRef, stateReplicator: ActorRef): Props = Props(new ClusterListener(master, stateReplicator))
 
   case object GetLeftNeighbor
   case class LeftNeighbor(address: RootActorPath)
@@ -27,19 +28,24 @@ object ClusterListener {
   case object GetNumberOfNodes
   case class NumberOfNodes(number: Int)
 
+  case class RegisterActorRefs(master: ActorRef, stateReplicator: ActorRef)
+
   case class ClusterStateException(msg: String) extends DodoException(msg)
 
+  case class MemberActors(member: Member, clusterListener: ActorRef, master: ActorRef, stateReplicator: ActorRef)
 }
 
 
-class ClusterListener extends Actor with ActorLogging {
+class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor with ActorLogging {
 
   import ClusterListener._
 
   implicit private val memberOrder: Ordering[Member] = Member.ageOrdering
+  implicit private val memberActorOrder: Ordering[MemberActors] = Ordering.by(_.member)
 
   private val cluster = Cluster(context.system)
   private val selfMember = cluster.selfMember
+  private val userGuardian = "user"
 
   override def preStart(): Unit = {
     Reaper.watchWithDefault(self)
@@ -52,16 +58,23 @@ class ClusterListener extends Actor with ActorLogging {
   override def postStop(): Unit =
     cluster.unsubscribe(self)
 
-  override def receive: Receive = internalReceive(Nil)
+  override def receive: Receive = internalReceive(Nil, Nil)
 
-  def internalReceive(members: Seq[Member]): Receive = {
+  def internalReceive(members: Seq[MemberActors], pendingNodes: Seq[Member]): Receive = {
+    case MemberUp(`selfMember`) =>
+      log.debug("We joined the cluster")
+      val myself = MemberActors(selfMember, self, master, stateReplicator)
+      context.become(internalReceive(members :+ myself, pendingNodes))
+
     case MemberUp(node) =>
       log.debug("New node ({}) joined the cluster", node)
-      context.become(internalReceive((members :+ node).sorted))
+      val newNeighbour = context.actorSelection(RootActorPath(node.address) / userGuardian / ODMaster.name / name)
+      newNeighbour ! RegisterActorRefs(master, stateReplicator)
+      context.become(internalReceive(members, pendingNodes :+ node))
 
     case MemberRemoved(node, _) =>
       log.debug("Node ({}) left the cluster", node)
-      context.become(internalReceive(members.filterNot(_ == node)))
+      context.become(internalReceive(members.filterNot(_.member == node), pendingNodes.filterNot(_ == node)))
 
     case UnreachableMember(node) =>
       log.debug("Node ({}) detected unreachable", node)
@@ -74,30 +87,42 @@ class ClusterListener extends Actor with ActorLogging {
 
     case GetLeftNeighbor if members.length >= 2 =>
       getLeftNeighbor(members)
-        .map(member => sender ! LeftNeighbor(RootActorPath(member.address)))
+        .map(member => sender ! LeftNeighbor(RootActorPath(member.member.address)))
         .recover(sendError)
 
     case GetRightNeighbor if members.length >= 2 =>
       getRightNeighbor(members)
-        .map(member => sender ! RightNeighbor(RootActorPath(member.address)))
+        .map(member => sender ! RightNeighbor(RootActorPath(member.member.address)))
         .recover(sendError)
 
     case GetLeftNeighbor | GetRightNeighbor if members.length < 2 =>
       log.warning("Cluster size too small for neighbor operations: {}", members.length)
       sendError.apply(ClusterStateException(s"Cluster size is too small: only ${members.length} of 2 members"))
+
+    case m @ RegisterActorRefs(otherMaster, otherSR) =>
+      log.debug("Received ActorRefs from {}", sender.path)
+      pendingNodes.find(_.address == sender.path.address) match {
+        case Some(node) =>
+          val newMembers = (members :+ MemberActors(node, sender, otherMaster, otherSR)).sorted
+          val newPendingNodes = pendingNodes.filterNot(_ == node)
+          context.become(internalReceive(newMembers, newPendingNodes))
+        case None =>
+          log.warning("Received actor refs of a node that we don't know! {}", m)
+      }
+
   }
 
-  private def getLeftNeighbor(members: Seq[Member]): Try[Member] = Try {
-    members.indexOf(selfMember) match {
+  private def getLeftNeighbor(members: Seq[MemberActors]): Try[MemberActors] = Try {
+    members.map(_.member).indexOf(selfMember) match {
       case -1 => throwSelfNotFound
       case  0 => members.last
       case  i => members(i - 1)
     }
   }
 
-  private def getRightNeighbor(members: Seq[Member]): Try[Member] = Try {
+  private def getRightNeighbor(members: Seq[MemberActors]): Try[MemberActors] = Try {
     val end = members.length - 1
-    members.indexOf(selfMember) match {
+    members.map(_.member).indexOf(selfMember) match {
       case  -1   => throwSelfNotFound
       case `end` => members.head
       case   i   => members(i + 1)
