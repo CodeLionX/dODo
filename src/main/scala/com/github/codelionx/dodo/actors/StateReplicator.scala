@@ -1,6 +1,6 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, ActorPath, ActorRef, DeadLetter, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.pattern.pipe
 import com.github.codelionx.dodo.actors.ClusterListener.{LeftNeighborDown, LeftNeighborRef, RightNeighborDown, RightNeighborRef}
 import com.github.codelionx.dodo.actors.DataHolder.SidechannelRef
@@ -83,7 +83,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
         log.info("My current state for {} is {}", leftNode.path, neighbourStates(leftNode)._2)
       } else {
         newNeighbour ! StateVersion(leftNode, -1)
-        log.info("I do not have a current state for {}", leftNode.path)
+        log.info("I do not have a state for {}", leftNode.path)
       }
       leftNode = newNeighbour
 
@@ -94,7 +94,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
         log.info("My current state for {} is {}", rightNode.path, neighbourStates(rightNode)._2)
       } else {
         newNeighbour ! StateVersion(rightNode, -1)
-        log.info("I do not have a current state for {}", rightNode.path)
+        log.info("I do not have a state for {}", rightNode.path)
       }
       rightNode = newNeighbour
 
@@ -106,8 +106,6 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
           master ! NewODCandidates(neighbourStates(failedNode)._1)
         }
         neighbourStates -= failedNode
-      } else {
-        log.info("I have no version of {}'s state. \n I only have the states of {}", failedNode.path, neighbourStates.keys)
       }
 
     case SidechannelRef(sourceRef) =>
@@ -164,7 +162,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
       neighbourStates += neighbour -> (state, versionNr)
     }
     log.info("Received state with version Nr {} from {}", versionNr, neighbour.path)
-    log.info("Currently holding states of {}", neighbourStates.keys)
+    log.debug("Currently holding states of {}", neighbourStates.keys)
   }
 
   def startReplication(): Unit = {
