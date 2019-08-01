@@ -1,6 +1,6 @@
 package com.github.codelionx.dodo.actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, ActorPath, ActorRef, DeadLetter, Props}
 import akka.pattern.pipe
 import com.github.codelionx.dodo.actors.ClusterListener.{LeftNeighborDown, LeftNeighborRef, RightNeighborDown, RightNeighborRef}
 import com.github.codelionx.dodo.actors.DataHolder.SidechannelRef
@@ -27,7 +27,7 @@ object StateReplicator {
 
   case class StateVersion(failedNode: ActorRef, versionNr: Int)
 
-  val replicateStateInterval: FiniteDuration = 20 seconds
+  val replicateStateInterval: FiniteDuration = 10 seconds
 }
 
 class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
@@ -47,7 +47,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
 
   def uninitialized(foundRightNeighbour: Boolean, foundLeftNeighbour: Boolean): Receive = {
     case LeftNeighborRef(leftNeighbour) =>
-      updateLeftNeighbour(leftNeighbour)
+      leftNode = leftNeighbour
       if (foundRightNeighbour) {
         startReplication()
       } else {
@@ -55,7 +55,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
       }
 
     case RightNeighborRef(rightNeighbour) =>
-      updateRightNeighbour(rightNeighbour)
+      rightNode = rightNeighbour
       if (foundLeftNeighbour) {
         startReplication()
       } else {
@@ -80,19 +80,23 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
       log.info("Left neighbour {} down. Comparing version with {}.", leftNode.path, newNeighbour.path)
       if (neighbourStates.contains(leftNode)) {
         newNeighbour ! StateVersion(leftNode, neighbourStates(leftNode)._2)
+        log.info("My current state for {} is {}", leftNode.path, neighbourStates(leftNode)._2)
       } else {
         newNeighbour ! StateVersion(leftNode, -1)
+        log.info("I do not have a current state for {}", leftNode.path)
       }
-      updateLeftNeighbour(newNeighbour)
+      leftNode = newNeighbour
 
     case RightNeighborDown(newNeighbour) =>
-      log.info("Left neighbour down. Comparing version with {}.", newNeighbour.path)
+      log.info("Right neighbour {} down. Comparing version with {}.", rightNode.path, newNeighbour.path)
       if (neighbourStates.contains(rightNode)) {
         newNeighbour ! StateVersion(rightNode, neighbourStates(rightNode)._2)
+        log.info("My current state for {} is {}", rightNode.path, neighbourStates(rightNode)._2)
       } else {
         newNeighbour ! StateVersion(rightNode, -1)
+        log.info("I do not have a current state for {}", rightNode.path)
       }
-      updateRightNeighbour(newNeighbour)
+      rightNode = newNeighbour
 
     case StateVersion(failedNode, versionNr) =>
       log.info("{} has version {} of {}'s state.", sender.path, versionNr, failedNode.path)
@@ -160,6 +164,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
       neighbourStates += neighbour -> (state, versionNr)
     }
     log.info("Received state with version Nr {} from {}", versionNr, neighbour.path)
+    log.info("Currently holding states of {}", neighbourStates.keys)
   }
 
   def startReplication(): Unit = {
