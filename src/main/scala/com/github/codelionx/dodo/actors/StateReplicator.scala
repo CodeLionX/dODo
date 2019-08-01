@@ -27,7 +27,7 @@ object StateReplicator {
 
   case class StateVersion(failedNode: ActorRef, versionNr: Int)
 
-  val replicateStateInterval: FiniteDuration = 5 seconds
+  val replicateStateInterval: FiniteDuration = 20 seconds
 }
 
 class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
@@ -77,7 +77,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
       updateRightNeighbour(newNeighbour)
 
     case LeftNeighborDown(newNeighbour) =>
-      log.info("Left neighbour down. Comparing version with {}.", newNeighbour.path)
+      log.info("Left neighbour {} down. Comparing version with {}.", leftNode.path, newNeighbour.path)
       if (neighbourStates.contains(leftNode)) {
         newNeighbour ! StateVersion(leftNode, neighbourStates(leftNode)._2)
       } else {
@@ -95,12 +95,15 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
       updateRightNeighbour(newNeighbour)
 
     case StateVersion(failedNode, versionNr) =>
-      log.info("{} has version {} of {}'s state.", sender, versionNr, failedNode)
+      log.info("{} has version {} of {}'s state.", sender.path, versionNr, failedNode.path)
       if (neighbourStates.contains(failedNode)) {
         if (neighbourStates(failedNode)._2 > versionNr) {
+          log.info("Using my version of {}'s state", failedNode.path)
           master ! NewODCandidates(neighbourStates(failedNode)._1)
         }
         neighbourStates -= failedNode
+      } else {
+        log.info("I have no version of {}'s state. \n I only have the states of {}", failedNode.path, neighbourStates.keys)
       }
 
     case SidechannelRef(sourceRef) =>
@@ -108,7 +111,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
       ActorStreamConnector.consumeStateRefVia(sourceRef, self)
 
     case stateMessage: StateOverStream =>
-      log.debug("Received data over stream.")
+      log.debug("Received data over stream from {}.", stateMessage.data._1.path)
       updateNeighboursState(stateMessage.data._1, stateMessage.data._2, stateMessage.data._3)
       sender ! StreamACK
 
@@ -135,7 +138,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   }
 
   def updateLeftNeighbour(newNeighbour: ActorRef): Unit = {
-    log.info("Setting {} as my left neighbour", newNeighbour)
+    log.info("Setting {} as my left neighbour", newNeighbour.path)
     if (neighbourStates.contains(leftNode)) {
       neighbourStates -= leftNode
     }
@@ -143,7 +146,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   }
 
   def updateRightNeighbour(newNeighbour: ActorRef): Unit = {
-    log.info("Setting {} as my right neighbour", newNeighbour)
+    log.info("Setting {} as my right neighbour", newNeighbour.path)
     if (neighbourStates.contains(rightNode)) {
       neighbourStates -= rightNode
     }
@@ -151,12 +154,12 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   }
 
   def updateNeighboursState(neighbour: ActorRef, state: Queue[(Seq[Int], Seq[Int])], versionNr: Int): Unit = {
-    if (neighbourStates.contains(sender) && neighbourStates(sender)._2 < versionNr) {
-      neighbourStates(sender) = (state, versionNr)
+    if (neighbourStates.contains(neighbour) && neighbourStates(neighbour)._2 < versionNr) {
+      neighbourStates(neighbour) = (state, versionNr)
     } else {
-      neighbourStates += sender -> (state, versionNr)
+      neighbourStates += neighbour -> (state, versionNr)
     }
-    log.info("Received state with version Nr {} from {}", versionNr, neighbour)
+    log.info("Received state with version Nr {} from {}", versionNr, neighbour.path)
   }
 
   def startReplication(): Unit = {
