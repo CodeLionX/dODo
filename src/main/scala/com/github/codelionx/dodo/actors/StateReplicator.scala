@@ -126,22 +126,11 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   }
 
   def sendStateViaStream(receiver: ActorRef, currentState: Queue[(Seq[Int], Seq[Int])]): Unit = {
-    log.info("Sending state via sidechannel to {}", sender)
-    val versionedState = (receiver, currentState, stateVersion)
+    log.info("Sending state via sidechannel to {}", receiver)
+    val versionedState = (self, currentState, stateVersion)
     val state = ActorStreamConnector.prepareStateRef(versionedState)
     import context.dispatcher
     state pipeTo receiver
-    stateVersion += 1
-  }
-
-  def replicateState(currentState: Queue[(Seq[Int], Seq[Int])]): Unit = {
-    sendState(leftNode, currentState)
-    sendState(rightNode, currentState)
-  }
-
-  def sendState(receiver: ActorRef, currentState: Queue[(Seq[Int], Seq[Int])]): Unit = {
-    receiver ! ReplicateState(currentState, stateVersion)
-    log.info("Sending {} my current state", receiver)
     stateVersion += 1
   }
 
@@ -157,7 +146,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
     log.info("Setting {} as my right neighbour", newNeighbour)
     if (neighbourStates.contains(rightNode)) {
       neighbourStates -= rightNode
-    } 
+    }
     rightNode = newNeighbour
   }
 

@@ -78,11 +78,9 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
       context.become(internalReceive(members.filterNot(_.member == node), pendingNodes.filterNot(_ == node)))
 
     case UnreachableMember(node) =>
-      updateNeighborsRemoved(members, node)
       log.debug("Node ({}) detected unreachable", node)
 
     case ReachableMember(node) =>
-      updateNeighborsNew(members)
       log.debug("Node ({}) detected reachable again", node)
 
     case GetNumberOfNodes =>
