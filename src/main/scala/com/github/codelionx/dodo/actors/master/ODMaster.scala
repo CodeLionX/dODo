@@ -113,6 +113,7 @@ class ODMaster(inputFile: Option[File])
         }
 
       case NumberOfNodes(number) =>
+        log.debug("{} nodes in the cluster", number)
         val isFirstNode = number <= 1
         val notFirstNode = !isFirstNode
         inputFile match {
@@ -125,6 +126,8 @@ class ODMaster(inputFile: Option[File])
             shutdown()
         }
         context.become(uninitialized(isFirstNode))
+
+      case GetState => log.debug("Ignoring state replication request in `unsubscribed`.")
 
       case m => log.debug("Unknown message received in `unsubscribed`: {}", m)
     }
@@ -169,6 +172,8 @@ class ODMaster(inputFile: Option[File])
       case DataNotReady =>
         log.error("Data Holder has no data. Data loading failed!")
         shutdown()
+
+      case GetState => log.debug("Ignoring state replication request in `uninitialized`.")
 
       case m => log.debug("Unknown message received in `uninitialized`: {}", m)
     }
@@ -258,6 +263,8 @@ class ODMaster(inputFile: Option[File])
         workers.foreach(actor => actor ! DataRef(table))
         startWorkStealing()
 
+      case GetState => log.debug("Ignoring state replication request in `pruning`.")
+
       case m => log.debug("Unknown message received in `pruning`: {}", m)
     }
 
@@ -288,7 +295,7 @@ class ODMaster(inputFile: Option[File])
       case GetState =>
         val currentState = candidateQueue.shareableState()
         sender ! CurrentState(currentState)
-        log.debug("Send current state to be replicated")
+        log.debug("Send current state to state replicator")
 
       case m => log.debug("Unknown message received in `findingODs`: {}", m)
     }
@@ -304,6 +311,11 @@ class ODMaster(inputFile: Option[File])
       case NewODCandidates(newODs) =>
         candidateQueue.enqueueNewAndAck(newODs, sender)
         sendWorkToIdleWorkers()
+
+      case GetState =>
+        val currentState = candidateQueue.shareableState()
+        sender ! CurrentState(currentState)
+        log.debug("Send current state to state replicator during work stealing phase")
 
       case m => log.debug("Unknown message received in `workStealing`: {}", m)
     }
