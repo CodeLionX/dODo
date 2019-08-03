@@ -6,6 +6,8 @@ import akka.cluster.{Cluster, Member}
 import com.github.codelionx.dodo.DodoException
 import com.github.codelionx.dodo.actors.master.ODMaster
 
+import scala.concurrent.duration._
+import scala.language.postfixOps
 import scala.util.Try
 
 
@@ -69,7 +71,13 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
     case MemberUp(node) =>
       log.debug("New node ({}) joined the cluster", node)
       val newNeighbour = context.actorSelection(RootActorPath(node.address) / userGuardian / ODMaster.name / name)
-      newNeighbour ! RegisterActorRefs(master, stateReplicator)
+      // FIXME: actorRefs get lost sometimes if the receiving node is not completely up!
+//      log.debug("Sending my refs to {}", newNeighbour)
+//      newNeighbour ! RegisterActorRefs(master, stateReplicator)
+      log.debug("Sending my refs to {} in 200 milliseconds", newNeighbour)
+      context.system.scheduler.scheduleOnce(200 milliseconds){
+        newNeighbour ! RegisterActorRefs(master, stateReplicator)
+      }(context.dispatcher)
       context.become(internalReceive(members, pendingNodes :+ node))
 
     case MemberRemoved(node, _) =>
@@ -84,7 +92,15 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
       log.debug("Node ({}) detected reachable again", node)
 
     case GetNumberOfNodes =>
-      sender ! NumberOfNodes(members.length)
+      sender ! NumberOfNodes(members.length + pendingNodes.length)
+
+    case m @ (GetLeftNeighbor | GetRightNeighbor) if pendingNodes.nonEmpty =>
+      log.debug(
+        "Requeueing request {} with 1 second timeout, {} nodes still have pending actor identifications",
+        m,
+        pendingNodes
+      )
+      context.system.scheduler.scheduleOnce(1 second, self, m)(context.dispatcher, sender)
 
     case GetLeftNeighbor if members.length >= 2 =>
       getLeftNeighbor(members)
@@ -110,7 +126,9 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
           updateNeighborsNew(newMembers)
           context.become(internalReceive(newMembers, newPendingNodes))
         case None =>
-          log.warning("Received actor refs of a node that we don't know! {}", m)
+          log.warning("Received actor refs of a node that we don't know!")
+          log.debug("Requeueing request {} with 1 second timeout", m)
+          context.system.scheduler.scheduleOnce(1 second, self, m)(context.dispatcher, sender)
       }
 
     case m => log.debug("Received unknown message: {}", m)
@@ -140,6 +158,7 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
     (selfIndex == otherIndex + 1) || (otherIndex == lastIndex && selfIndex == 0)
 
   private def updateNeighborsNew(members: Seq[MemberActors]): Unit = {
+    log.debug("Sending right and left neighbor to state replicator")
     getRightNeighbor(members)
       .map(member => stateReplicator ! RightNeighborRef(member.stateReplicator))
       .recover(sendError(stateReplicator))
