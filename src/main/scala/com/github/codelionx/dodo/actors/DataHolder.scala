@@ -86,7 +86,7 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
       }
 
     case FetchDataFromCluster =>
-      log.debug("Request to load data from cluster: searching left neighbour")
+      log.debug("Request to load data from cluster: searching left neighbor")
       clusterListener ! GetLeftNeighbor
       context.become(handleLeftNeighborResults(sender))
   }
@@ -94,7 +94,7 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
   def handleLeftNeighborResults(originalSender: ActorRef): Receive = withCommonNotReady {
     case LeftNeighbor(address) =>
       val otherDataHolder = context.actorSelection(address / userGuardian / ODMaster.name / name)
-      log.info("Asking left neighbour ({}) for sidechannel ref", otherDataHolder)
+      log.info("Asking left neighbor ({}) for sidechannel ref", otherDataHolder)
       otherDataHolder ! GetSidechannelRef
       context.become(handleFetchDataResult(originalSender, isLeftNB = true))
 
@@ -108,7 +108,7 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
   def handleRightNeighborResults(originalSender: ActorRef): Receive = withCommonNotReady {
     case RightNeighbor(address) =>
       val otherDataHolder = context.actorSelection(address / userGuardian / ODMaster.name / name)
-      log.info("Asking right neighbour ({}) for sidechannel address", otherDataHolder)
+      log.info("Asking right neighbor ({}) for sidechannel address", otherDataHolder)
       otherDataHolder ! GetSidechannelRef
       context.become(handleFetchDataResult(originalSender, isLeftNB = false))
 
