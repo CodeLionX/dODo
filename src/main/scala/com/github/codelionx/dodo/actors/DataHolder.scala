@@ -119,7 +119,7 @@ class DataHolder(clusterListener: ActorRef) extends Actor with ActorLogging {
 
   def handleFetchDataResult(originalSender: ActorRef, isLeftNB: Boolean): Receive = withCommonNotReady {
     case SidechannelRef(sourceRef) =>
-      ActorStreamConnector.consumeSourceRefVia(sourceRef, self)
+      ActorStreamConnector.consumeSourceRefOfClassVia(sourceRef, classOf[DataOverStream], self)
       context.become(handleStreamResult(originalSender, isLeftNB))
 
     case DataNotReady if isLeftNB =>

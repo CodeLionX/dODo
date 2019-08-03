@@ -110,7 +110,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
 
     case SidechannelRef(sourceRef) =>
       log.debug("Receiving state over sidechannel from {}", sender)
-      ActorStreamConnector.consumeStateRefVia(sourceRef, self)
+      ActorStreamConnector.consumeSourceRefOfClassVia(sourceRef, classOf[StateOverStream], self)
 
     case stateMessage: StateOverStream =>
       log.debug("Received data over stream from {}.", stateMessage.data._1.path)
@@ -133,7 +133,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   def sendStateViaStream(receiver: ActorRef, currentState: Queue[(Seq[Int], Seq[Int])]): Unit = {
     log.info("Sending state via sidechannel to {}", receiver)
     val versionedState = (self, currentState, stateVersion)
-    val state = ActorStreamConnector.prepareStateRef(versionedState)
+    val state = ActorStreamConnector.prepareSourceRef(versionedState)
     import context.dispatcher
     state pipeTo receiver
     stateVersion += 1
