@@ -2,6 +2,7 @@ package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.pattern.pipe
+import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.ClusterListener.{LeftNeighborDown, LeftNeighborRef, RightNeighborDown, RightNeighborRef}
 import com.github.codelionx.dodo.actors.DataHolder.SidechannelRef
 import com.github.codelionx.dodo.actors.Worker.NewODCandidates
@@ -26,17 +27,16 @@ object StateReplicator {
   case class ReplicateState(queue: Queue[(Seq[Int], Seq[Int])], versionNr: Int)
 
   case class StateVersion(failedNode: ActorRef, versionNr: Int)
-
-  val replicateStateInterval: FiniteDuration = 10 seconds
 }
 
 class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   import StateReplicator._
 
+  private val replicateStateInterval: FiniteDuration = Settings(context.system).stateReplicationInterval
+  private val neighborStates: mutable.Map[ActorRef, (Queue[(Seq[Int], Seq[Int])], Int)] = mutable.Map.empty
   private var stateVersion: Int = 0
-  private var neighbourStates: mutable.Map[ActorRef, (Queue[(Seq[Int], Seq[Int])], Int)] = mutable.Map.empty
-  private var leftNode: ActorRef = Actor.noSender
-  private var rightNode: ActorRef = Actor.noSender
+  private var leftReplicator: ActorRef = Actor.noSender
+  private var rightReplicator: ActorRef = Actor.noSender
 
   override def preStart(): Unit = {
     log.info("Starting {}", name)
