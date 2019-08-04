@@ -47,7 +47,7 @@ trait DowningProtocol {
       }
 
     case GetWorkloadDowning if sender != self =>
-      val workAvailable = candidateQueue.workAvailable && candidateQueue.hasPendingWork
+      val workAvailable = candidateQueue.workAvailable || candidateQueue.hasPendingWork
       log.info(
         "Responding to downing workload with {} to {}",
         if (workAvailable) "work available" else "no work available",
