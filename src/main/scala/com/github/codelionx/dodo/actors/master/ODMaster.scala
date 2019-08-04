@@ -8,7 +8,7 @@ import akka.cluster.Cluster
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator._
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
-import com.github.codelionx.dodo.Settings
+import com.github.codelionx.dodo.MetricPrinter.TimingKey
 import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, NumberOfNodes}
 import com.github.codelionx.dodo.actors.DataHolder.{DataNotReady, DataRef, FetchDataFromCluster, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
@@ -19,6 +19,7 @@ import com.github.codelionx.dodo.actors.master.ReducedColumnsProtocol.{GetReduce
 import com.github.codelionx.dodo.actors.master.WorkStealingProtocol._
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
 import com.github.codelionx.dodo.types.TypedColumn
+import com.github.codelionx.dodo.{MetricPrinter, Settings}
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
@@ -70,6 +71,8 @@ class ODMaster(inputFile: Option[File])
   protected val candidateQueue: ODCandidateQueue = ODCandidateQueue.empty(settings.maxBatchSize)
   protected val masterMediator: ActorRef = DistributedPubSub(context.system).mediator
 
+  private val startTime: Long = System.currentTimeMillis()
+
   private var pendingPruningResponses = 0
   private var idleWorkers: Seq[ActorRef] = Seq.empty
   private var table: Array[TypedColumn[Any]] = Array.empty
@@ -84,6 +87,8 @@ class ODMaster(inputFile: Option[File])
     }
 
   override def preStart(): Unit = {
+    MetricPrinter.printHeader()
+    MetricPrinter.printTiming(TimingKey.START, startTime)
     log.info("Starting {}", name)
     Reaper.watchWithDefault(self)
     masterMediator ! Put(self)
@@ -92,6 +97,7 @@ class ODMaster(inputFile: Option[File])
   }
 
   override def postStop(): Unit = {
+    MetricPrinter.printTiming(TimingKey.END)
     log.info("Stopping {}", name)
     masterMediator ! Unsubscribe(reducedColumnsTopic, self)
     masterMediator ! Unsubscribe(workStealingTopic, self)
@@ -142,6 +148,7 @@ class ODMaster(inputFile: Option[File])
           log.info("No order dependencies due to length of table")
           shutdown()
         } else if (first) {
+          MetricPrinter.printTiming(TimingKey.PRUNING_START)
           log.debug("Looking for constant columns and generating column tuples for equality checking")
           val orderEquivalencies = Array.fill(table.length) {
             Seq.empty[Int]
@@ -223,6 +230,7 @@ class ODMaster(inputFile: Option[File])
             }
           )
           log.info("Pruning done")
+          MetricPrinter.printTiming(TimingKey.PRUNING_END)
           masterMediator ! Publish(reducedColumnsTopic, ReducedColumns(newReducedColumns))
         } else {
           context.become(
@@ -231,6 +239,7 @@ class ODMaster(inputFile: Option[File])
         }
 
       case ReducedColumns(cols) if first =>
+        MetricPrinter.printTiming(TimingKey.RECEIVED_REDUCED_COLUMNS)
         log.info(
           "Received reduced columns, generating first candidates and starting search. Remaining cols: {}",
           cols.toSeq.sorted.map(table(_).name)
@@ -254,6 +263,7 @@ class ODMaster(inputFile: Option[File])
         context.become(findingODs())
 
       case ReducedColumns(cols) if !first =>
+        MetricPrinter.printTiming(TimingKey.RECEIVED_REDUCED_COLUMNS)
         log.info(
           "Received reduced columns, initiating work stealing to get work. Remaining cols: {}",
           cols.toSeq.sorted.map(table(_).name)
@@ -342,7 +352,7 @@ class ODMaster(inputFile: Option[File])
     context.stop(self)
   }
 
-  def sendWorkToIdleWorkers(): Unit = {
+  def sendWorkToIdleWorkers(): Unit =
     if (candidateQueue.workAvailable && idleWorkers.nonEmpty) {
       idleWorkers = idleWorkers.filter(worker => {
         candidateQueue.sendBatchTo(worker, getReducedColumns) match {
@@ -354,5 +364,5 @@ class ODMaster(inputFile: Option[File])
         }
       })
     }
-  }
+
 }
