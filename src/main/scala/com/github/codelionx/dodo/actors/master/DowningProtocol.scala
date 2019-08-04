@@ -62,7 +62,7 @@ trait DowningProtocol {
   }
 
   def startDowningProtocol(): Unit = {
-    log.info("{} started downingProtocol", self.path.name)
+    log.info("{} started downing protocol", self.path.name)
     pendingMasters = Set.empty
     cluster.subscribe(self, classOf[MemberRemoved], classOf[UnreachableMember])
 
