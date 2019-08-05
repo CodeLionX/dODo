@@ -73,7 +73,8 @@ trait WorkStealingProtocol {
   }
 
   def startWorkStealing(): Unit = {
-    log.info("Asking for workloads")
+    log.info("Starting work stealing protocol")
+    log.debug("Asking for workloads")
     otherWorkloads = Seq.empty
     pendingResponses = Set.empty
     masterMediator ! Publish(ODMaster.workStealingTopic, GetWorkLoad)
@@ -89,7 +90,14 @@ trait WorkStealingProtocol {
       otherWorkloads :+= (queueSize, pendingSize, sender)
 
     case WorkLoadTimeout if otherWorkloads.isEmpty =>
-      startDowningProtocol()
+      // make sure, we really don't have any work left
+      if(candidateQueue.noWorkAvailable && candidateQueue.hasNoPendingWork) {
+        log.debug("Got no workload from the other nodes and we still have no work.")
+        startDowningProtocol()
+      } else {
+        log.info("Got no workload from the other nodes, but we have work again. Exiting work stealing protocol")
+        context.become(findingODs())
+      }
 
     case WorkLoadTimeout if otherWorkloads.nonEmpty =>
       val sortedWorkloads = otherWorkloads.sorted
@@ -98,7 +106,7 @@ trait WorkStealingProtocol {
       val pendingSum = sortedWorkloads.map(_._2).sum
       var ownWorkLoad = 0
 
-      log.info(
+      log.debug(
         "Work stealing status: averageWl={}, others' pendingSum={}, our pending ODs={}",
         averageWl,
         pendingSum,
@@ -123,7 +131,7 @@ trait WorkStealingProtocol {
               None
             }
         }.toSet
-      } else if (candidateQueue.hasNoPendingWork) {
+      } else if (candidateQueue.noWorkAvailable && candidateQueue.hasNoPendingWork) {
         // we have no work left and got no work from our work stealing attempt
         if (pendingSum > 0) {
           // others will soon have work for us to steal again
@@ -132,10 +140,11 @@ trait WorkStealingProtocol {
           context.system.scheduler.scheduleOnce(3 second, self, startWorkStealing())
         }
         // check if ALL nodes are completely out of work
+        log.debug("All nodes are out of work")
         startDowningProtocol()
       } else {
         // nothing to steal, but we still wait for worker results, wait for them
-        log.info("Nothing to steal, but our workers are still busy.")
+        log.info("Nothing to steal, but our workers are still busy. Exiting work stealing protocol")
         context.become(findingODs())
       }
 
@@ -156,7 +165,7 @@ trait WorkStealingProtocol {
   private def updatePendingResponse(actorToRemove: ActorRef): Unit = {
     pendingResponses -= actorToRemove
     if (pendingResponses.isEmpty) {
-      if (candidateQueue.queueSize == 0 && candidateQueue.pendingSize == 0) {
+      if (candidateQueue.noWorkAvailable && candidateQueue.hasNoPendingWork) {
         log.info("Work stealing failed")
         startDowningProtocol()
       } else {

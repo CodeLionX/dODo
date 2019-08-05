@@ -292,7 +292,16 @@ class ODMaster(inputFile: Option[File])
     reducedColumnsHandling() orElse
     workStealingImpl orElse {
       case GetTask =>
-        idleWorkers :+= sender
+        val worker = sender
+        candidateQueue.sendBatchTo(worker, getReducedColumns) match {
+          case scala.util.Success(_) =>
+            log.debug("Scheduling task to check OCD to worker {}", worker.path.name)
+            log.info("Received work. Exiting work stealing protocol")
+            context.become(findingODs())
+          case scala.util.Failure(_) =>
+            log.debug("Caching worker {} as idle because work queue is empty", worker.path.name)
+            idleWorkers :+= worker
+        }
 
       case NewODCandidates(newODs) =>
         candidateQueue.enqueueNewAndAck(newODs, sender)
@@ -321,7 +330,8 @@ class ODMaster(inputFile: Option[File])
           case scala.util.Success(_) =>
             log.debug("Scheduling task to check OCD to idle worker {}", worker.path.name)
             false
-          case scala.util.Failure(_) => true
+          case scala.util.Failure(_) =>
+            true
         }
       })
     }
