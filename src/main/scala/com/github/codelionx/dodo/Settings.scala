@@ -4,6 +4,8 @@ import akka.actor.{ExtendedActorSystem, Extension, ExtensionId, ExtensionIdProvi
 import com.github.codelionx.dodo.Settings.{ParsingSettings, SideChannelSettings}
 import com.typesafe.config.Config
 
+import scala.concurrent.duration.{Duration, FiniteDuration}
+
 
 object Settings extends ExtensionId[Settings] with ExtensionIdProvider {
 
@@ -59,6 +61,10 @@ class Settings(config: Config) extends Extension {
   val maxBatchSize: Int = config.getInt(s"$namespace.max-batch-size")
 
   val ocdComparability: Boolean = config.getBoolean(s"$namespace.ocd-comparability")
+
+  val stateReplicationInterval: FiniteDuration = Duration.fromNanos(
+    config.getDuration(s"$namespace.replication-interval").toNanos
+  )
 
   val parsing: ParsingSettings = new ParsingSettings(config, namespace)
 
