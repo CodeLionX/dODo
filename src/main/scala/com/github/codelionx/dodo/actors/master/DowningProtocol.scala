@@ -47,7 +47,7 @@ trait DowningProtocol {
       }
 
     case GetWorkloadDowning if sender != self =>
-      val workAvailable = candidateQueue.workAvailable && candidateQueue.hasPendingWork
+      val workAvailable = candidateQueue.workAvailable || candidateQueue.hasPendingWork
       log.info(
         "Responding to downing workload with {} to {}",
         if (workAvailable) "work available" else "no work available",
@@ -62,7 +62,7 @@ trait DowningProtocol {
   }
 
   def startDowningProtocol(): Unit = {
-    log.info("{} started downingProtocol", self.path.name)
+    log.info("{} started downing protocol", self.path.name)
     pendingMasters = Set.empty
     cluster.subscribe(self, classOf[MemberRemoved], classOf[UnreachableMember])
 
