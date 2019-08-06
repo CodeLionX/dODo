@@ -9,6 +9,9 @@ java -jar \
      dodo.jar \
      --input-file=../data/test.csv \
      --has-header=false \
+     --host=$(hostname) \
      --port=7877 \
      --seed-port=7877 \
      > metrics.csv
+
+#     --seed-host=odin01 \
