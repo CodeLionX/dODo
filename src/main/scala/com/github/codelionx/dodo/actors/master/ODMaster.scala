@@ -12,6 +12,7 @@ import com.github.codelionx.dodo.Settings
 import com.github.codelionx.dodo.actors.ClusterListener.{GetNumberOfNodes, NumberOfNodes}
 import com.github.codelionx.dodo.actors.DataHolder.{DataNotReady, DataRef, FetchDataFromCluster, LoadDataFromDisk}
 import com.github.codelionx.dodo.actors.ResultCollector.{ConstColumns, OrderEquivalencies}
+import com.github.codelionx.dodo.actors.StateReplicator.{CurrentState, GetState}
 import com.github.codelionx.dodo.actors.Worker._
 import com.github.codelionx.dodo.actors._
 import com.github.codelionx.dodo.actors.master.ReducedColumnsProtocol.{GetReducedColumns, ReducedColumns}
@@ -58,7 +59,8 @@ class ODMaster(inputFile: Option[File])
   protected val nWorkers: Int = settings.workers
 
   protected val cluster: Cluster = Cluster(context.system)
-  protected val clusterListener: ActorRef = context.actorOf(ClusterListener.props, ClusterListener.name)
+  protected val stateReplicator: ActorRef = context.actorOf(StateReplicator.props(self), StateReplicator.name)
+  protected val clusterListener: ActorRef = context.actorOf(ClusterListener.props(self, stateReplicator), ClusterListener.name)
   protected val dataHolder: ActorRef = context.actorOf(DataHolder.props(clusterListener), DataHolder.name)
   protected val resultCollector: ActorRef = context.actorOf(ResultCollector.props(), ResultCollector.name)
   protected val workers: Seq[ActorRef] = (0 until nWorkers).map(i =>
@@ -111,6 +113,7 @@ class ODMaster(inputFile: Option[File])
         }
 
       case NumberOfNodes(number) =>
+        log.debug("{} nodes in the cluster", number)
         val isFirstNode = number <= 1
         val notFirstNode = !isFirstNode
         inputFile match {
@@ -123,6 +126,8 @@ class ODMaster(inputFile: Option[File])
             shutdown()
         }
         context.become(uninitialized(isFirstNode))
+
+      case GetState => log.debug("Ignoring state replication request in `unsubscribed`.")
 
       case m => log.debug("Unknown message received in `unsubscribed`: {}", m)
     }
@@ -167,6 +172,8 @@ class ODMaster(inputFile: Option[File])
       case DataNotReady =>
         log.error("Data Holder has no data. Data loading failed!")
         shutdown()
+
+      case GetState => log.debug("Ignoring state replication request in `uninitialized`.")
 
       case m => log.debug("Unknown message received in `uninitialized`: {}", m)
     }
@@ -256,6 +263,8 @@ class ODMaster(inputFile: Option[File])
         workers.foreach(actor => actor ! DataRef(table))
         startWorkStealing()
 
+      case GetState => log.debug("Ignoring state replication request in `pruning`.")
+
       case m => log.debug("Unknown message received in `pruning`: {}", m)
     }
 
@@ -283,6 +292,11 @@ class ODMaster(inputFile: Option[File])
         candidateQueue.enqueueNewAndAck(newODs, sender)
         sendWorkToIdleWorkers()
 
+      case GetState =>
+        val currentState = candidateQueue.shareableState()
+        sender ! CurrentState(currentState)
+        log.debug("Send current state to state replicator")
+
       case m => log.debug("Unknown message received in `findingODs`: {}", m)
     }
 
@@ -306,6 +320,11 @@ class ODMaster(inputFile: Option[File])
       case NewODCandidates(newODs) =>
         candidateQueue.enqueueNewAndAck(newODs, sender)
         sendWorkToIdleWorkers()
+
+      case GetState =>
+        val currentState = candidateQueue.shareableState()
+        sender ! CurrentState(currentState)
+        log.debug("Send current state to state replicator during work stealing phase")
 
       case m => log.debug("Unknown message received in `workStealing`: {}", m)
     }
