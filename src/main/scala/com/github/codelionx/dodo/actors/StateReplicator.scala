@@ -29,9 +29,11 @@ object StateReplicator {
   case class CurrentState(state: Queue[(Seq[Int], Seq[Int])])
 
   case class StateVersion(failedNode: ActorRef, versionNr: Int)
+
 }
 
 class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
+
   import StateReplicator._
 
   private val replicateStateInterval: FiniteDuration = Settings(context.system).stateReplicationInterval
@@ -51,7 +53,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
     stateRecoveryHandling orElse
     stateReceptionHandling orElse {
       case LeftNeighborRef(leftNeighbor) =>
-        leftReplicator = leftNeighbor
+        updateLeftNeighbor(leftNeighbor)
         if (foundRightNeighbor) {
           startReplication()
         } else {
@@ -59,7 +61,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
         }
 
       case RightNeighborRef(rightNeighbor) =>
-        rightReplicator = rightNeighbor
+        updateRightNeighbor(rightNeighbor)
         if (foundLeftNeighbor) {
           startReplication()
         } else {
@@ -67,7 +69,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
         }
 
       case akka.actor.Status.Failure(error) =>
-        log.error("Could not find neighbor, because", error)
+        log.warning("Could not find neighbor, because", error)
     }
 
   def initialized(): Receive =
@@ -140,7 +142,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   def sendStateVersionTo(lostReplicator: ActorRef, newNeighbor: ActorRef): Unit = {
     log.info(
       "{} neighbor {} down. Sending version to {}.",
-      if(lostReplicator == leftReplicator) "Left" else "Right",
+      if (lostReplicator == leftReplicator) "Left" else "Right",
       lostReplicator.path,
       newNeighbor.path
     )

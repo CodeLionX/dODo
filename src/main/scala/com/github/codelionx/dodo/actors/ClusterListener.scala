@@ -71,13 +71,8 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
     case MemberUp(node) =>
       log.debug("New node ({}) joined the cluster", node)
       val newNeighbour = context.actorSelection(RootActorPath(node.address) / userGuardian / ODMaster.name / name)
-      // FIXME: actorRefs get lost sometimes if the receiving node is not completely up!
-//      log.debug("Sending my refs to {}", newNeighbour)
-//      newNeighbour ! RegisterActorRefs(master, stateReplicator)
-      log.debug("Sending my refs to {} in 200 milliseconds", newNeighbour)
-      context.system.scheduler.scheduleOnce(200 milliseconds){
-        newNeighbour ! RegisterActorRefs(master, stateReplicator)
-      }(context.dispatcher)
+      log.debug("Sending my refs to {}", newNeighbour)
+      newNeighbour ! RegisterActorRefs(master, stateReplicator)
       context.become(internalReceive(members, pendingNodes :+ node))
 
     case MemberRemoved(node, _) =>
@@ -91,8 +86,15 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
     case ReachableMember(node) =>
       log.debug("Node ({}) detected reachable again", node)
 
-    case GetNumberOfNodes =>
+    case GetNumberOfNodes if selfUp(members) =>
       sender ! NumberOfNodes(members.length + pendingNodes.length)
+
+    case GetNumberOfNodes if !selfUp(members) =>
+      log.debug(
+        "Requeueing request {} with 1 second timeout, we are not part of the cluster yet!",
+        GetNumberOfNodes
+      )
+      context.system.scheduler.scheduleOnce(1 second, self, GetNumberOfNodes)(context.dispatcher, sender)
 
     case m @ (GetLeftNeighbor | GetRightNeighbor) if pendingNodes.nonEmpty =>
       log.debug(
@@ -134,6 +136,9 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
     case m => log.debug("Received unknown message: {}", m)
   }
 
+  private def selfUp(members: Seq[MemberActors]): Boolean =
+    members.map(_.member).contains(selfMember)
+
   private def getLeftNeighbor(members: Seq[MemberActors]): Try[MemberActors] = Try {
     members.map(_.member).indexOf(selfMember) match {
       case -1 => throwSelfNotFound
@@ -161,29 +166,26 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
     log.debug("Sending right and left neighbor to state replicator")
     getRightNeighbor(members)
       .map(member => stateReplicator ! RightNeighborRef(member.stateReplicator))
-      .recover(sendError(stateReplicator))
     getLeftNeighbor(members)
       .map(member => stateReplicator ! LeftNeighborRef(member.stateReplicator))
-      .recover(sendError(stateReplicator))
   }
 
-  private def updateNeighborsOnMemberRemoved(members: Seq[MemberActors], removedMember: Member): Unit = {
+  private def updateNeighborsOnMemberRemoved(members: Seq[MemberActors], removedMember: Member): Seq[MemberActors] = {
     val selfIndex = members.map(_.member).indexOf(selfMember)
     val removedIndex = members.map(_.member).indexOf(removedMember)
-    val newMembers = members.filterNot(_.member == removedMember)
+    val newMembers = members.filterNot(_.member == removedMember).sorted
     if (wasRightNeighbor(selfIndex, removedIndex, members.length-1)) {
       getRightNeighbor(newMembers)
         .map(member => stateReplicator ! RightNeighborDown(member.stateReplicator))
-        .recover(sendError(stateReplicator))
     } else if (wasLeftNeighbor(selfIndex, removedIndex, members.length-1)) {
       getLeftNeighbor(newMembers)
         .map(member => stateReplicator ! LeftNeighborDown(member.stateReplicator))
-        .recover(sendError(stateReplicator))
     }
+    newMembers
   }
 
   private def throwSelfNotFound: Nothing = {
-    log.error("Could not find self node in the member list: our node is not up yet??")
+    log.warning("Could not find self node in the member list: our node is not up yet??")
     throw ClusterStateException("Could not find self node in the member list")
   }
 
