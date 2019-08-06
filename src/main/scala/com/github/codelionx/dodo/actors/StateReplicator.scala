@@ -162,15 +162,19 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   }
 
   def updateLeftNeighbor(newNeighbour: ActorRef): Unit = {
-    log.info("Setting {} as my left neighbor", newNeighbour.path)
-    neighborStates -= leftReplicator
-    leftReplicator = newNeighbour
+    if (newNeighbour != leftReplicator) {
+      log.info("Setting {} as my left neighbor", newNeighbour.path)
+      neighborStates -= leftReplicator
+      leftReplicator = newNeighbour
+    }
   }
 
   def updateRightNeighbor(newNeighbour: ActorRef): Unit = {
-    log.info("Setting {} as my right neighbor", newNeighbour.path)
-    neighborStates -= rightReplicator
-    rightReplicator = newNeighbour
+    if (newNeighbour != rightReplicator) {
+      log.info("Setting {} as my right neighbor", newNeighbour.path)
+      neighborStates -= rightReplicator
+      rightReplicator = newNeighbour
+    }
   }
 
   def updateNeighborState(neighbor: ActorRef, state: Queue[(Seq[Int], Seq[Int])], versionNr: Int): Unit = {
