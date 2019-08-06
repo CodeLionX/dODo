@@ -13,11 +13,15 @@ import scala.collection.immutable.Queue
 import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.language.postfixOps
+
+
 object StateReplicator {
 
   val name = "statereplicator"
 
-  def props(master: ActorRef): Props = Props( new StateReplicator(master))
+  def props(master: ActorRef): Props = Props(new StateReplicator(master))
+
+  case class NeighborState(queue: Queue[(Seq[Int], Seq[Int])], version: Int, wasSendDuringRecovery: Boolean)
 
   // messages
   case object GetState
@@ -31,7 +35,7 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
   import StateReplicator._
 
   private val replicateStateInterval: FiniteDuration = Settings(context.system).stateReplicationInterval
-  private val neighborStates: mutable.Map[ActorRef, (Queue[(Seq[Int], Seq[Int])], Int)] = mutable.Map.empty
+  private val neighborStates: mutable.Map[ActorRef, NeighborState] = mutable.Map.empty
   private var stateVersion: Int = 0
   private var leftReplicator: ActorRef = Actor.noSender
   private var rightReplicator: ActorRef = Actor.noSender
@@ -78,26 +82,40 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
 
       case RightNeighborRef(newNeighbour) =>
         updateRightNeighbor(newNeighbour)
-
-      case LeftNeighborDown(newNeighbour) =>
-        sendStateVersionTo(leftReplicator, newNeighbour)
-        leftReplicator = newNeighbour
-
-      case RightNeighborDown(newNeighbour) =>
-        sendStateVersionTo(rightReplicator, newNeighbour)
-        rightReplicator = newNeighbour
     }
 
   def stateRecoveryHandling: Receive = {
-    case StateVersion(failedNode, versionNr) =>
-      log.info("{} has version {} of {}'s state.", sender.path, versionNr, failedNode.path)
-      if (neighborStates.contains(failedNode)) {
-        if (neighborStates(failedNode)._2 > versionNr) {
-          log.info("Using my version of {}'s state", failedNode.path)
-          master ! NewODCandidates(neighborStates(failedNode)._1)
-        }
-        neighborStates -= failedNode
+    case LeftNeighborDown(newNeighbour) =>
+      sendStateVersionTo(leftReplicator, newNeighbour)
+      leftReplicator = newNeighbour
+      removeStateIfRecovered(leftReplicator)
+
+    case RightNeighborDown(newNeighbour) =>
+      sendStateVersionTo(rightReplicator, newNeighbour)
+      rightReplicator = newNeighbour
+      removeStateIfRecovered(rightReplicator)
+
+    case StateVersion(failedNode, otherVersion) =>
+      val myVersion = neighborStates
+        .mapValues(_.version)
+        .getOrElse(failedNode, -1)
+      log.info("My version of {}' state is {}", failedNode.path, myVersion)
+      log.info("{} has version {} of {}'s state.", sender.path, otherVersion, failedNode.path)
+      if (myVersion > otherVersion) {
+        log.info("Using my version of {}'s state", failedNode.path)
+        master ! NewODCandidates(neighborStates(failedNode).queue)
+      } else {
+        log.info("Forgetting {}'s state", failedNode.path)
       }
+      removeStateIfRecovered(failedNode)
+  }
+
+  private def removeStateIfRecovered(failedNode: ActorRef): Unit = {
+    if (neighborStates.mapValues(_.wasSendDuringRecovery).getOrElse(failedNode, true)) {
+      neighborStates -= failedNode
+    } else {
+      neighborStates(failedNode) = neighborStates(failedNode).copy(wasSendDuringRecovery = true)
+    }
   }
 
   def stateReceptionHandling: Receive = {
@@ -121,18 +139,15 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
 
   def sendStateVersionTo(lostReplicator: ActorRef, newNeighbor: ActorRef): Unit = {
     log.info(
-      "{} neighbor {} down. Comparing version with {}.",
+      "{} neighbor {} down. Sending version to {}.",
       if(lostReplicator == leftReplicator) "Left" else "Right",
       lostReplicator.path,
       newNeighbor.path
     )
-    if (neighborStates.contains(lostReplicator)) {
-      newNeighbor ! StateVersion(lostReplicator, neighborStates(lostReplicator)._2)
-      log.info("My current state for {} is {}", lostReplicator.path, neighborStates(lostReplicator)._2)
-    } else {
-      newNeighbor ! StateVersion(lostReplicator, -1)
-      log.info("I do not have a state for {}", lostReplicator.path)
-    }
+    val version = neighborStates
+      .mapValues(_.version)
+      .getOrElse(lostReplicator, -1)
+    newNeighbor ! StateVersion(lostReplicator, version)
   }
 
   def sendStateViaStream(receiver: ActorRef, currentState: Queue[(Seq[Int], Seq[Int])]): Unit = {
@@ -146,26 +161,21 @@ class StateReplicator(master: ActorRef) extends Actor with ActorLogging {
 
   def updateLeftNeighbor(newNeighbour: ActorRef): Unit = {
     log.info("Setting {} as my left neighbor", newNeighbour.path)
-    if (neighborStates.contains(leftReplicator)) {
-      neighborStates -= leftReplicator
-    }
+    neighborStates -= leftReplicator
     leftReplicator = newNeighbour
   }
 
   def updateRightNeighbor(newNeighbour: ActorRef): Unit = {
     log.info("Setting {} as my right neighbor", newNeighbour.path)
-    if (neighborStates.contains(rightReplicator)) {
-      neighborStates -= rightReplicator
-    }
+    neighborStates -= rightReplicator
     rightReplicator = newNeighbour
   }
 
   def updateNeighborState(neighbor: ActorRef, state: Queue[(Seq[Int], Seq[Int])], versionNr: Int): Unit = {
-    if (neighborStates.contains(neighbor) && neighborStates(neighbor)._2 < versionNr) {
-      neighborStates(neighbor) = (state, versionNr)
-    } else {
-      neighborStates += neighbor -> (state, versionNr)
+    if (neighborStates.mapValues(_.version).getOrElse(neighbor, -1) < versionNr) {
+      neighborStates += neighbor -> NeighborState(state, versionNr, wasSendDuringRecovery = false)
     }
+    // else: update nothing and ignore incoming message
     log.info("Received state with version Nr {} from {}", versionNr, neighbor.path)
     log.debug("Currently holding states of {}", neighborStates.keys)
   }
