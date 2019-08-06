@@ -42,7 +42,7 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
 
   import ClusterListener._
 
-  implicit private val memberOrder: Ordering[Member] = Member.ageOrdering
+  implicit private val memberOrder: Ordering[Member] = Member.ordering
   implicit private val memberActorOrder: Ordering[MemberActors] = Ordering.by(_.member)
 
   private val cluster = Cluster(context.system)
@@ -66,7 +66,7 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
     case MemberUp(`selfMember`) =>
       log.debug("We joined the cluster")
       val myself = MemberActors(selfMember, self, master, stateReplicator)
-      context.become(internalReceive(members :+ myself, pendingNodes))
+      context.become(internalReceive((members :+ myself).sorted, pendingNodes))
 
     case MemberUp(node) =>
       log.debug("New node ({}) joined the cluster", node)
@@ -77,8 +77,8 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
 
     case MemberRemoved(node, _) =>
       log.debug("Node ({}) left the cluster", node)
-      updateNeighborsOnMemberRemoved(members, node)
-      context.become(internalReceive(members.filterNot(_.member == node), pendingNodes.filterNot(_ == node)))
+      val newMembers = updateNeighborsOnMemberRemoved(members, node)
+      context.become(internalReceive(newMembers, pendingNodes.filterNot(_ == node)))
 
     case UnreachableMember(node) =>
       log.debug("Node ({}) detected unreachable", node)
@@ -164,6 +164,7 @@ class ClusterListener(master: ActorRef, stateReplicator: ActorRef) extends Actor
 
   private def updateNeighborsNew(members: Seq[MemberActors]): Unit = {
     log.debug("Sending right and left neighbor to state replicator")
+    log.debug("Ring: ({} ->)", members.map(_.member.address).mkString(" -> "))
     getRightNeighbor(members)
       .map(member => stateReplicator ! RightNeighborRef(member.stateReplicator))
     getLeftNeighbor(members)
