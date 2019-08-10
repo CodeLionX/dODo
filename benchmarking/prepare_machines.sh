@@ -20,4 +20,3 @@ for node in ${nodes}; do
   # shellcheck disable=SC2086
   scp ${files} student@${node}:~/dodo/
 done
-
