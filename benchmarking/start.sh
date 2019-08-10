@@ -13,12 +13,12 @@ java -jar \
   --host=$(hostname) \
   --port=7877 \
   --seed-port=7877 \
-  >metrics.csv &
+  >metrics.csv
 
 #     --seed-host=odin01 \
 
 # wait for first child to end (will be the java-command)
-wait -n
+# wait -n
 
 # stop all remaining childs
 pkill -P $$ 1>/dev/null 2>&1

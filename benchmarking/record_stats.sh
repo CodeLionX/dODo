@@ -6,7 +6,7 @@ delim=";"
 
 echo "timestamp${delim}timestamp (human)${delim}Memory Util${delim}CPU Util" > ${output_file}
 
-while sleep ${interval}; do
+while true; do
   used_mem=$(grep "Active:" /proc/meminfo | sed 's/Active: //g')
   cpu_load=$(cut -d " " -f 1 < /proc/loadavg)
 
@@ -14,4 +14,5 @@ while sleep ${interval}; do
   date_human=$(date -u -Iseconds)
 
   echo "${date_seconds}${delim}${date_human}${delim}${used_mem}${delim}${cpu_load}" >> ${output_file}
+  sleep ${interval}
 done
