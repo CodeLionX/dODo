@@ -7,7 +7,7 @@ for ((i=1;i<=odin_end;i++)); do
   nodes="${nodes} odin0${i}"
 done
 
-files="start.sh clean.sh pack.sh logback.xml dodo.jar"
+files="start.sh clean.sh pack.sh record_stats.sh logback.xml dodo.jar"
 
 for node in ${nodes}; do
   echo "Preparing node ${node}"
