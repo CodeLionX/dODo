@@ -91,7 +91,6 @@ class ODMaster(inputFile: Option[File])
     MetricPrinter.printTiming(TimingKey.START, startTime)
     log.info("Starting {}", name)
     Reaper.watchWithDefault(self)
-    masterMediator ! Put(self)
     masterMediator ! Subscribe(reducedColumnsTopic, self)
     masterMediator ! Subscribe(workStealingTopic, self)
   }
@@ -193,7 +192,7 @@ class ODMaster(inputFile: Option[File])
                reducedColumnsCancellable: Cancellable
              ): Receive =
     workStealingHandling(allowStealing = false) orElse
-    downingHandling(fakeWorkAvailable = first, virulent = !first) orElse
+    downingHandling(fakeWorkAvailable = first) orElse
     reducedColumnsHandling() orElse {
       case GetTask if columnIndexTuples.isEmpty =>
         log.debug("Caching idle worker {}", sender.path.name)
