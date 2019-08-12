@@ -3,7 +3,8 @@ package com.github.codelionx.dodo.actors
 import java.io.{BufferedWriter, File, FileWriter}
 
 import akka.actor.{Actor, ActorLogging, Props}
-import com.github.codelionx.dodo.Settings
+import com.github.codelionx.dodo.MetricPrinter.ResultKey
+import com.github.codelionx.dodo.{MetricPrinter, Settings}
 
 
 object ResultCollector {
@@ -28,7 +29,8 @@ class ResultCollector extends Actor with ActorLogging {
 
   private val settings = Settings(context.system)
 
-  private var odsFound = 0
+  private var odsFound = 0L
+  private var ocdsFound = 0L
 
   // FileWriter
   val bw = new BufferedWriter(new FileWriter(new File(settings.outputFilePath)))
@@ -38,12 +40,15 @@ class ResultCollector extends Actor with ActorLogging {
 
   override def postStop(): Unit = {
     bw.close()
-    log.info("{} ODs found", odsFound)
+    log.info("{} ODs found", odsFound + ocdsFound)
+    MetricPrinter.printResult(ResultKey.ODs, odsFound, description = "just ODs")
+    MetricPrinter.printResult(ResultKey.OCDs, ocdsFound, description = "just OCDs")
   }
 
   override def receive: Receive = {
     case ConstColumns(ccs) =>
       write("Constant columns: " + prettyList(ccs))
+      MetricPrinter.printResult(ResultKey.CCs, ccs.size, description = "Constant Columns")
 
     case OrderEquivalencies(oes) =>
       write(
@@ -54,6 +59,7 @@ class ResultCollector extends Actor with ActorLogging {
             .mkString
         }".stripMargin
       )
+      MetricPrinter.printResult(ResultKey.OECs, oes.size, description = "Order Equivalent Columns")
 
     case Results(ods, ocds) =>
       for (od <- ods) {
@@ -66,7 +72,7 @@ class ResultCollector extends Actor with ActorLogging {
         val left = prettyList(ocd._1)
         val right = prettyList(ocd._2)
         if (settings.ocdComparability) {
-          odsFound += 1
+          ocdsFound += 1
         }
         write(s"OCD: $left ~ $right")
       }

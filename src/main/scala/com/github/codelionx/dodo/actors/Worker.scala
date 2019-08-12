@@ -2,7 +2,8 @@ package com.github.codelionx.dodo.actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.github.codelionx.dodo.GlobalImplicits.TypedColumnConversions._
-import com.github.codelionx.dodo.Settings
+import com.github.codelionx.dodo.MetricPrinter.ResultKey
+import com.github.codelionx.dodo.{MetricPrinter, Settings}
 import com.github.codelionx.dodo.actors.DataHolder.DataRef
 import com.github.codelionx.dodo.actors.ResultCollector.Results
 import com.github.codelionx.dodo.discovery.{CandidateGenerator, DependencyChecking}
@@ -59,8 +60,10 @@ class Worker(resultCollector: ActorRef) extends Actor with ActorLogging with Dep
     }
   }
 
-  override def postStop(): Unit =
+  override def postStop(): Unit = {
     log.info("Stopping {}. Processed {} items", name, itemsProcessed)
+    MetricPrinter.printResult(ResultKey.PROCCESSED_ITEMS, itemsProcessed, description = self.path.name)
+  }
 
   override def receive: Receive = uninitialized
 

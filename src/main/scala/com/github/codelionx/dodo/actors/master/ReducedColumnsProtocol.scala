@@ -1,5 +1,7 @@
 package com.github.codelionx.dodo.actors.master
 
+import akka.cluster.pubsub.DistributedPubSubMediator.Put
+
 
 object ReducedColumnsProtocol {
 
@@ -27,6 +29,7 @@ trait ReducedColumnsProtocol {
       throw new IllegalArgumentException("Reduced columns are already set!")
     }
     reducedColumns = columns
+    masterMediator ! Put(self)
   }
 
   def getReducedColumns: Set[Int] = reducedColumns
